@@ -63,7 +63,6 @@ for i, upval in ipairs(getupvalues(Net.send)) do
     end
 end
 
-
 function SaveConfig()
     if IsLoading then return end
     if writefile then
@@ -71,18 +70,21 @@ function SaveConfig()
     end
 end
 
-
 function Register(id, obj, defaultVal)
     Registry[id] = obj
     ConfigData[id] = defaultVal
+    
+    if type(obj) == "table" and obj.SetKeybind then
+        local currentBind = obj:GetKeybind()
+        Registry[id .. "_Bind"] = obj
+        ConfigData[id .. "_Bind"] = currentBind and currentBind.Name or "NONE"
+    end
+    
     return obj
 end
 
-
-
 local function LoadConfig()
     if not (isfile and readfile and isfile(CONFIG_FILE)) then return end
-    
     local ok, decoded = pcall(function()
         return HttpService:JSONDecode(readfile(CONFIG_FILE))
     end)
@@ -94,13 +96,12 @@ local function LoadConfig()
         if obj then
             if key:match("_Bind$") then
                 local bindKey = (value ~= "NONE") and Enum.KeyCode[value] or nil
-                obj:SetKeybind(bindKey)
-
+                obj:SetKeybind(bindKey, true)
             elseif obj.Kind == "Keybind" then
                 local bindKey = (value ~= "NONE") and Enum.KeyCode[value] or nil
-                obj:Set(bindKey)
+                obj:Set(bindKey) 
             else
-                obj:Set(value)
+                obj:Set(value) 
             end
             ConfigData[key] = value
         end
@@ -148,6 +149,10 @@ HitBoxExpansionFunc = Register("HitBoxExpansionFunc",Combat:AddFunction({
         SaveConfig()
         if state then HitBoxExpansion = HitBoxExpansionSlider:Get() else HitBoxExpansion = 1 end
     end,
+    OnBind = function(key)
+        ConfigData["HitBoxExpansionFunc_Bind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end
 }))
 
 HitBoxExpansionSlider = Register("HitBoxExpansionSlider",HitBoxExpansionFunc:AddSlider({
@@ -169,6 +174,10 @@ ReachFunc = Register("ReachFunc",Combat:AddFunction({
         SaveConfig()
         if state then ReachDist = ReachSlider:Get() else ReachDist = 0 end
     end,
+    OnBind = function(key)
+        ConfigData["ReachFunc_Bind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end
 }))
 
 ReachSlider = Register("ReachSlider",ReachFunc:AddSlider({
@@ -180,7 +189,6 @@ ReachSlider = Register("ReachSlider",ReachFunc:AddSlider({
         if ReachFunc:Get() then ReachDist = value end
     end,
 }))
-
 
 
 
@@ -199,64 +207,6 @@ World.rayBox = function(origin, dir, feet, height, padding, width)
     return oldRayBox(origin, dir, feet, newHeight, padding, newWidth)
 end
 
-
-
-
--- RunService.RenderStepped:Connect(function()
---     if not triggerBot then return end
---     local char = plr.Character
---     local time = os.clock()
---     if time < nextTriggerBotAtack then return end
---     if not char or not char:GetAttribute("Alive") then return end
---     if not Controller.state or Input.mouseFree or Hands.using then return end
---     local Falling = Controller.state and Controller.state.fallDistance >= 2
---     if not CharHaveWeapon() or not(MaceAutoSwapTriggerBot and Falling) then return end
---     local OnlyFullCharge = true
---     if char:FindFirstChild("mace") or (MaceAutoSwapTriggerBot and getSlotByName("mace")) then OnlyFullCharge = false end
---     if OnlyFullCharge and Hands.strength() < 0.92 then
---         return
---     end
---     local eye = Controller.eye()
---     local look = Controller.look()
---     if not eye or not look then return end
---     local target, dist = World.pick(eye, look, Config.REACH+ReachDist)
---     if target then
---         local webHit = World.blockRay(eye, look, 4.5, { "Webs" })
---         if webHit and webHit.dist <= dist then
---             return
---         end
---         if OnlyCritsForTriggerBot then
---             local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
---             if hrp and hrp.AssemblyLinearVelocity.Y < -1 then
---                 if Falling and MaceAutoSwapTriggerBot then 
---                     local SlotNow = Hands.inv.selected
---                     local maceSlot = getSlotByName("mace")
---                     if maceSlot and maceSlot ~= SlotNow then
---                         Hands.select(maceSlot)
---                         task.delay(0.1,function()
---                             Hands.select(SlotNow)
---                         end)
---                     end    
---                 end    
---                 mouse1click()   
---                 nextTriggerBotAtack = time + TriggerBotAttackCooldown
---             end   
---         else
---             if Falling and MaceAutoSwapTriggerBot then 
---                 local SlotNow = Hands.inv.selected
---                 local maceSlot = getSlotByName("mace")
---                 if maceSlot then
---                     Hands.select(maceSlot)
---                     task.delay(0.1,function()
---                         Hands.select(SlotNow)
---                     end)
---                 end    
---             end    
---             nextTriggerBotAtack = time + TriggerBotAttackCooldown     
---             mouse1click()
---         end  
---     end
--- end)
 
 
 
@@ -291,6 +241,8 @@ RunService.RenderStepped:Connect(function()
                 nextTriggerBotAtack = time + TriggerBotAttackCooldown
                 return
             else
+                if not CharHaveWeapon() then return end
+                if not (Hands.strength() > 0.92) then return end
                 if OnlyCritsForTriggerBot then
                     if hrp and hrp.AssemblyLinearVelocity.Y < -1 then
                         mouse1click()
@@ -298,7 +250,7 @@ RunService.RenderStepped:Connect(function()
                         return
                     end
                 else
-                
+                    if not (Hands.strength() > 0.92) then return end
                     mouse1click()
                     nextTriggerBotAtack = time + TriggerBotAttackCooldown
                     return
@@ -306,6 +258,7 @@ RunService.RenderStepped:Connect(function()
             end
         else    
             if not CharHaveWeapon() then return end
+            if not (Hands.strength() > 0.92) then return end
             if OnlyCritsForTriggerBot then
                 if hrp and hrp.AssemblyLinearVelocity.Y < -1 then
                     mouse1click()
@@ -334,6 +287,10 @@ SpeedMultiplierFunc = Register("SpeedMultiplierFunc",Utils:AddFunction({
             end
         end
     end,
+    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+        ConfigData["SpeedMultiplierFunc_Bind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end
 }))
 
 SpeedMultiplierSlider = Register("SpeedMultiplierSlider",SpeedMultiplierFunc:AddSlider({
@@ -360,6 +317,10 @@ AutoTotemFunc = Register("AutoTotemFunc",Utils:AddFunction({
         SaveConfig()
         AutoTotem = state
     end,
+    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+        ConfigData["AutoTotemFunc_Bind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end
 }))
 
 RunService.Heartbeat:Connect(function()
@@ -399,6 +360,10 @@ ElytraSwapFunc = Register("ElytraSwapFunc",Utils:AddFunction({
         ConfigData["PearlCatchFunc"] = state
         SaveConfig()
     end,
+    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+        ConfigData["ElytraSwapFunc_Bind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end
 }))
 
 local ElytraSwapBind =  Register("ElytraSwapBind",ElytraSwapFunc:AddKeybind({
@@ -457,6 +422,10 @@ FireworkBindFunc = Register("FireworkBindFunc",Utils:AddFunction({
         ConfigData["PearlCatchFunc"] = state
         SaveConfig()
     end,
+    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+        ConfigData["FireworkBindFunc_Bind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end
 }))
 
 FireworkBind = Register("FireworkBind",FireworkBindFunc:AddKeybind({
@@ -520,6 +489,10 @@ PearlCatchFunc = Register("PearlCatchFunc",Utils:AddFunction({
         ConfigData["PearlCatchFunc"] = state
         SaveConfig()
     end,
+    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+        ConfigData["PearlCatchFunc_Bind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end
 }))
 
 PearlCatchBind = Register("PearlCatchBind",PearlCatchFunc:AddKeybind({
@@ -585,6 +558,10 @@ NightFunc = Register("NightFunc",Visual:AddFunction({
         SaveConfig()
         Lighting.ClockTime = state and TimeSlider:Get() or 14
     end,
+    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+        ConfigData["NightFunc_Bind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end
 }))
 
 TimeSlider = Register("TimeSlider",NightFunc:AddSlider({
