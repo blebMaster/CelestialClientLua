@@ -9,7 +9,7 @@ local Players = game:GetService("Players")
 
 local Library = {}
 Library.__index = Library
-Library.Version = "1.2.0"
+Library.Version = "1.2.1"
 
 local Window = {}
 Window.__index = Window
@@ -82,17 +82,25 @@ local KEY_NAMES = {
 
 local function merge(base, extra)
     local out = {}
-    for k, v in pairs(base) do out[k] = v end
+    for k, v in pairs(base) do
+        out[k] = v
+    end
     if extra then
-        for k, v in pairs(extra) do out[k] = v end
+        for k, v in pairs(extra) do
+            out[k] = v
+        end
     end
     return out
 end
 
 local function create(class, props, parent)
     local inst = Instance.new(class)
-    for k, v in pairs(props) do inst[k] = v end
-    if parent then inst.Parent = parent end
+    for k, v in pairs(props) do
+        inst[k] = v
+    end
+    if parent then
+        inst.Parent = parent
+    end
     return inst
 end
 
@@ -133,7 +141,9 @@ local function tween(inst, info, props)
 end
 
 local function fire(fn, ...)
-    if type(fn) ~= "function" then return end
+    if type(fn) ~= "function" then
+        return
+    end
     task.spawn(function(...)
         local ok, err = pcall(fn, ...)
         if not ok then
@@ -147,28 +157,45 @@ local function utf8Lower(s)
         local out = {}
         for _, cp in utf8.codes(s) do
             local c = cp
-            if c >= 65 and c <= 90 then c = c + 32
-            elseif c >= 0x410 and c <= 0x42F then c = c + 32
-            elseif c >= 0x400 and c <= 0x40F then c = c + 80 end
+            if c >= 65 and c <= 90 then
+                c = c + 32
+            elseif c >= 0x410 and c <= 0x42F then
+                c = c + 32
+            elseif c >= 0x400 and c <= 0x40F then
+                c = c + 80
+            end
             out[#out + 1] = utf8.char(c)
         end
         return table.concat(out)
     end)
-    return ok and result or string.lower(s)
+    if ok then
+        return result
+    end
+    return string.lower(s)
 end
 
 local function normalizeKey(value)
-    if value == nil or value == "NONE" then return nil end
-    if typeof(value) == "EnumItem" then return value end
+    if value == nil or value == "NONE" then
+        return nil
+    end
+    if typeof(value) == "EnumItem" then
+        return value
+    end
     if type(value) == "string" then
-        local ok, key = pcall(function() return Enum.KeyCode[value] end)
-        if ok then return key end
+        local ok, key = pcall(function()
+            return Enum.KeyCode[value]
+        end)
+        if ok then
+            return key
+        end
     end
     return nil
 end
 
 local function keyLabel(key, none)
-    if not key then return none end
+    if not key then
+        return none
+    end
     return KEY_NAMES[key.Name] or string.upper(key.Name)
 end
 
@@ -181,11 +208,15 @@ local function countDecimals(n)
 end
 
 local function resolveParent(custom)
-    if custom then return custom end
+    if custom then
+        return custom
+    end
     local env = getfenv and getfenv() or {}
     if type(env.gethui) == "function" then
         local ok, hui = pcall(env.gethui)
-        if ok and hui then return hui end
+        if ok and hui then
+            return hui
+        end
     end
     local okCore, core = pcall(function()
         local c = game:GetService("CoreGui")
@@ -194,7 +225,9 @@ local function resolveParent(custom)
         probe:Destroy()
         return c
     end)
-    if okCore and core then return core end
+    if okCore and core then
+        return core
+    end
     return Players.LocalPlayer:WaitForChild("PlayerGui")
 end
 
@@ -209,10 +242,15 @@ local function newText(win, class, parent, props)
         TextXAlignment = Enum.TextXAlignment.Left,
         Text = "",
     }
-    if class == "TextButton" then base.AutoButtonColor = false
-    elseif class == "TextBox" then base.ClearTextOnFocus = false end
+    if class == "TextButton" then
+        base.AutoButtonColor = false
+    elseif class == "TextBox" then
+        base.ClearTextOnFocus = false
+    end
     for k, v in pairs(props) do
-        if k ~= "Weight" then base[k] = v end
+        if k ~= "Weight" then
+            base[k] = v
+        end
     end
     return create(class, base, parent)
 end
@@ -231,14 +269,19 @@ local function newIcon(win, kind, parent, size, color)
         Active = false,
     }, parent)
     local parts = {}
-    local function add(inst, prop) parts[#parts + 1] = { inst, prop } end
+    local function add(inst, prop)
+        parts[#parts + 1] = { inst, prop }
+    end
     local center = UDim2.fromScale(0.5, 0.5)
     local half = Vector2.new(0.5, 0.5)
     local asset = win.IconAssets[kind]
 
     if asset then
         local img = create("ImageLabel", {
-            Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, Image = asset, ImageColor3 = color,
+            Size = UDim2.fromScale(1, 1),
+            BackgroundTransparency = 1,
+            Image = asset,
+            ImageColor3 = color,
         }, holder)
         add(img, "ImageColor3")
     elseif kind == "Gear" then
@@ -255,9 +298,12 @@ local function newIcon(win, kind, parent, size, color)
         for i = 0, 7 do
             local a = math.rad(i * 45)
             local tooth = create("Frame", {
-                AnchorPoint = half, Position = UDim2.new(0.5, math.cos(a) * r, 0.5, math.sin(a) * r),
-                Size = UDim2.fromOffset(toothLen, toothW), Rotation = i * 45,
-                BackgroundColor3 = color, BorderSizePixel = 0,
+                AnchorPoint = half,
+                Position = UDim2.new(0.5, math.cos(a) * r, 0.5, math.sin(a) * r),
+                Size = UDim2.fromOffset(toothLen, toothW),
+                Rotation = i * 45,
+                BackgroundColor3 = color,
+                BorderSizePixel = 0,
             }, holder)
             add(tooth, "BackgroundColor3")
         end
@@ -278,21 +324,23 @@ local function newIcon(win, kind, parent, size, color)
             Size = UDim2.fromOffset(d, d), BackgroundTransparency = 1, BorderSizePixel = 0,
         }, holder)
         circle(ring)
-        add(stroke(ring, color, 1.6), "Color")
-        local handle = create("Frame", {
-            AnchorPoint = half, Position = UDim2.fromOffset(size * 0.78, size * 0.78),
-            Size = UDim2.fromOffset(size * 0.34, 1.8), Rotation = 45,
-            BackgroundColor3 = color, BorderSizePixel = 0,
-        }, holder)
-        corner(handle, 1)
-        add(handle, "BackgroundColor3")
-    end
-
+add(stroke(ring, color, 1.6), "Color")
+local handle = create("Frame", {
+AnchorPoint = half, Position = UDim2.fromOffset(size * 0.78, size * 0.78),
+Size = UDim2.fromOffset(size * 0.34, 1.8), Rotation = 45,
+BackgroundColor3 = color, BorderSizePixel = 0,
+}, holder)
+corner(handle, 1)
+add(handle, "BackgroundColor3")
+end
 local icon = { Frame = holder }
 function icon.Tint(newColor, animate)
 for _, part in ipairs(parts) do
-if animate then tween(part[1], TWEEN_FAST, { [part[2]] = newColor })
-else part[1][part[2]] = newColor end
+if animate then
+tween(part[1], TWEEN_FAST, { [part[2]] = newColor })
+else
+part[1][part[2]] = newColor
+end
 end
 end
 return icon
@@ -400,7 +448,9 @@ SettingTypes.Slider = {
 Init = function(setting, opts)
 setting.Min = opts.Min or 0
 setting.Max = opts.Max or 100
-if setting.Max <= setting.Min then setting.Max = setting.Min + 1 end
+if setting.Max <= setting.Min then
+setting.Max = setting.Min + 1
+end
 setting.Inc = opts.Increment or 1
 setting.Suffix = opts.Suffix or ""
 setting.Decimals = math.max(countDecimals(setting.Inc), countDecimals(setting.Min))
@@ -415,7 +465,9 @@ end,
 Build = function(setting, parent)
 local win = setting.Feature.Window
 local theme = win.Theme
-local function fmt(v) return string.format("%." .. setting.Decimals .. "f", v) .. setting.Suffix end
+local function fmt(v)
+return string.format("%." .. setting.Decimals .. "f", v) .. setting.Suffix
+end
 local row = create("Frame", {
 Name = setting.Name, Size = UDim2.new(1, 0, 0, 54), BackgroundTransparency = 1, LayoutOrder = setting.Order,
 }, parent)
@@ -489,7 +541,9 @@ updateFromX(input.Position.X)
 end
 end))
 win:_track(UserInputService.InputEnded:Connect(function(input)
-if isPointer(input) then dragging = false end
+if isPointer(input) then
+dragging = false
+end
 end))
 end,
 }
@@ -612,8 +666,8 @@ local function deserializeValue(val)
 if type(val) == "table" then
 if val.__enum == "KeyCode" then
 return normalizeKey(val.name)
-elseif val.__color then
-return Color3.new(val.__color[1], val.__color[2], val.__color[3])
+elseif val.__color and type(val.__color) == "table" then
+return Color3.new(val.__color[1] or 1, val.__color[2] or 1, val.__color[3] or 1)
 end
 end
 return val
@@ -628,7 +682,9 @@ self:SaveConfig(self.CurrentConfig)
 end
 end
 function Window:SaveConfig(name)
-if type(writefile) ~= "function" then return false end
+if type(writefile) ~= "function" then
+return false
+end
 name = name or self.CurrentConfig or "default"
 self.CurrentConfig = name
 if type(isfolder) == "function" and type(makefolder) == "function" then
@@ -663,14 +719,20 @@ end
 return false
 end
 function Window:LoadConfig(name)
-if type(readfile) ~= "function" or type(isfile) ~= "function" then return false end
+if type(readfile) ~= "function" or type(isfile) ~= "function" then
+return false
+end
 name = name or self.CurrentConfig or "default"
 local path = self:_getConfigPath(name)
-if not isfile(path) then return false end
+if not isfile(path) then
+return false
+end
 local ok, decoded = pcall(function()
 return HttpService:JSONDecode(readfile(path))
 end)
-if not ok or type(decoded) ~= "table" then return false end
+if not ok or type(decoded) ~= "table" then
+return false
+end
 self.CurrentConfig = name
 self._loadingConfig = true
 if type(decoded.Features) == "table" then
@@ -701,7 +763,9 @@ self._loadingConfig = false
 return true
 end
 function Window:DeleteConfig(name)
-if type(delfile) ~= "function" or type(isfile) ~= "function" then return false end
+if type(delfile) ~= "function" or type(isfile) ~= "function" then
+return false
+end
 local path = self:_getConfigPath(name)
 if isfile(path) then
 return pcall(delfile, path)
@@ -710,8 +774,12 @@ return false
 end
 function Window:GetConfigs()
 local list = {}
-if type(listfiles) ~= "function" or type(isfolder) ~= "function" then return list end
-if not isfolder(self.ConfigFolder) then return list end
+if type(listfiles) ~= "function" or type(isfolder) ~= "function" then
+return list
+end
+if not isfolder(self.ConfigFolder) then
+return list
+end
 local ok, files = pcall(listfiles, self.ConfigFolder)
 if ok and type(files) == "table" then
 for _, file in ipairs(files) do
@@ -734,7 +802,9 @@ function Window:_rootSize()
 local s = self.Root.AbsoluteSize
 if s.X < 10 or s.Y < 10 then
 local cam = workspace.CurrentCamera
-if cam then s = cam.ViewportSize end
+if cam then
+s = cam.ViewportSize
+end
 end
 return s
 end
@@ -779,7 +849,9 @@ tween(group, TWEEN_SHOW, { GroupTransparency = 0, Position = base })
 else
 tween(group, TWEEN_HIDE, { GroupTransparency = 1, Position = lowered })
 task.delay(TWEEN_HIDE.Time, function()
-if entry.Token == token and group.Parent then group.Visible = false end
+if entry.Token == token and group.Parent then
+group.Visible = false
+end
 end)
 end
 end
@@ -796,9 +868,13 @@ self:_bringToFront(entry)
 end
 end)
 self:_track(UserInputService.InputChanged:Connect(function(input)
-if not dragging then return end
+if not dragging then
+return
+end
 if input.UserInputType ~= Enum.UserInputType.MouseMovement
-and input.UserInputType ~= Enum.UserInputType.Touch then return end
+and input.UserInputType ~= Enum.UserInputType.Touch then
+return
+end
 local dx = input.Position.X - startMouse.X
 local dy = input.Position.Y - startMouse.Y
 local root = self:_rootSize()
@@ -853,9 +929,14 @@ query = string.gsub(query, "%s+$", "")
 local any = false
 for _, feature in ipairs(self._features) do
 local show
-if query == "" then show = feature.Section == self._active
-else show = string.find(feature._searchKey, query, 1, true) ~= nil end
-if feature._ui then feature._ui.Card.Visible = show end
+if query == "" then
+show = feature.Section == self._active
+else
+show = string.find(feature._searchKey, query, 1, true) ~= nil
+end
+if feature._ui then
+feature._ui.Card.Visible = show
+end
 any = any or show
 end
 self.EmptyLabel.Visible = not any
@@ -866,13 +947,19 @@ self._active._setActive(false)
 end
 local changed = self._active ~= section
 self._active = section
-if changed then section._setActive(true) end
-if self.SearchInput.Text ~= "" then self.SearchInput.Text = "" end
+if changed then
+section._setActive(true)
+end
+if self.SearchInput.Text ~= "" then
+self.SearchInput.Text = ""
+end
 self:_refresh()
 self.Content.CanvasPosition = Vector2.new(0, 0)
 end
 function Window:AddSection(opts)
-if type(opts) == "string" then opts = { Name = opts } end
+if type(opts) == "string" then
+opts = { Name = opts }
+end
 opts = opts or {}
 local theme = self.Theme
 local section = setmetatable({
@@ -923,7 +1010,9 @@ section._setActive = function(active)
 tween(fill, TWEEN_FAST, { BackgroundTransparency = active and 0 or 1 })
 tween(btn, TWEEN_FAST, { BackgroundTransparency = 1 })
 tween(label, TWEEN_FAST, { TextColor3 = active and WHITE or theme.TextMuted })
-if icon then tween(icon, TWEEN_FAST, { ImageColor3 = active and WHITE or theme.TextMuted }) end
+if icon then
+tween(icon, TWEEN_FAST, { ImageColor3 = active and WHITE or theme.TextMuted })
+end
 end
 btn.MouseEnter:Connect(function()
 if self._active ~= section then
@@ -937,19 +1026,29 @@ tween(btn, TWEEN_FAST, { BackgroundTransparency = 1 })
 tween(label, TWEEN_FAST, { TextColor3 = theme.TextMuted })
 end
 end)
-btn.MouseButton1Click:Connect(function() self:SelectSection(section) end)
-if not self._active then self:SelectSection(section) end
+btn.MouseButton1Click:Connect(function()
+self:SelectSection(section)
+end)
+if not self._active then
+self:SelectSection(section)
+end
 return section
 end
 -- Notifications --------------------------------------------------------------
 function Window:Notify(title, message, duration, positive)
-if self._destroyed then return end
+if self._destroyed then
+return
+end
 local theme = self.Theme
 title = tostring(title or "")
 duration = duration or 2.5
 local existing = self._notifByKey[title]
-if existing then existing.Kill() end
-while #self._notifs >= 5 do self._notifs[1].Kill() end
+if existing then
+existing.Kill()
+end
+while #self._notifs >= 5 do
+self._notifs[1].Kill()
+end
 self._notifOrder = self._notifOrder + 1
 local holder = create("Frame", {
 Size = UDim2.fromOffset(NOTIF_W, NOTIF_H), BackgroundTransparency = 1, LayoutOrder = self._notifOrder,
@@ -969,7 +1068,9 @@ Position = UDim2.fromOffset(9, 11), Size = UDim2.new(0, 3, 1, -22),
 BackgroundColor3 = positive and WHITE or theme.TextDim, BorderSizePixel = 0,
 }, body)
 corner(bar, 2)
-if positive then gradient(bar, theme, 90) end
+if positive then
+gradient(bar, theme, 90)
+end
 newText(self, "TextLabel", body, {
 Position = UDim2.fromOffset(22, 8), Size = UDim2.new(1, -32, 0, 16), Text = title, TextSize = 12,
 Weight = Enum.FontWeight.Bold, TextTruncate = Enum.TextTruncate.AtEnd,
@@ -982,17 +1083,26 @@ TextTruncate = Enum.TextTruncate.AtEnd,
 local dead = false
 local item = {}
 function item.Kill()
-if dead then return end
+if dead then
+return
+end
 dead = true
 for i, v in ipairs(self._notifs) do
-if v == item then table.remove(self._notifs, i) break end
+if v == item then
+table.remove(self._notifs, i)
+break
 end
-if self._notifByKey[title] == item then self._notifByKey[title] = nil end
+end
+if self._notifByKey[title] == item then
+self._notifByKey[title] = nil
+end
 tween(card, TWEEN_HIDE, { GroupTransparency = 1, Position = UDim2.fromOffset(-40, 0) })
 tween(holder, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
 Size = UDim2.fromOffset(NOTIF_W, 0),
 })
-task.delay(0.3, function() holder:Destroy() end)
+task.delay(0.3, function()
+holder:Destroy()
+end)
 end
 table.insert(self._notifs, item)
 self._notifByKey[title] = item
@@ -1001,49 +1111,75 @@ task.delay(duration, item.Kill)
 end
 -- Show / hide ----------------------------------------------------------------
 function Window:Show()
-if self._destroyed or self._visible then return end
+if self._destroyed or self._visible then
+return
+end
 self._visible = true
 self:_setEntryVisible(self._main, true)
 for _, feature in ipairs(self._features) do
 local entry = feature._entry
-if entry and entry.Open then self:_setEntryVisible(entry, true) end
+if entry and entry.Open then
+self:_setEntryVisible(entry, true)
+end
 end
 end
 function Window:Hide()
-if self._destroyed or not self._visible then return end
+if self._destroyed or not self._visible then
+return
+end
 self._visible = false
 self:_cancelCapture()
 self.SearchInput:ReleaseFocus()
 self:_setEntryVisible(self._main, false)
 for _, feature in ipairs(self._features) do
 local entry = feature._entry
-if entry and entry.Open then self:_setEntryVisible(entry, false) end
+if entry and entry.Open then
+self:_setEntryVisible(entry, false)
+end
 end
 end
 function Window:Toggle()
-if self._visible then self:Hide() else self:Show() end
+if self._visible then
+self:Hide()
+else
+self:Show()
+end
 end
 function Window:SetVisible(state)
-if state then self:Show() else self:Hide() end
+if state then
+self:Show()
+else
+self:Hide()
 end
-function Window:IsVisible() return self._visible end
+end
+function Window:IsVisible()
+return self._visible
+end
 function Window:SetToggleKey(key)
 self.ToggleKey = normalizeKey(key) or self.ToggleKey
 end
 function Window:CloseAllSettings()
-for _, feature in ipairs(self._features) do feature:CloseSettings() end
+for _, feature in ipairs(self._features) do
+feature:CloseSettings()
+end
 end
 function Window:Destroy()
-if self._destroyed then return end
+if self._destroyed then
+return
+end
 self._destroyed = true
-for _, conn in ipairs(self._conns) do conn:Disconnect() end
+for _, conn in ipairs(self._conns) do
+conn:Disconnect()
+end
 self._conns = {}
 self.Gui:Destroy()
 end
 -- ============================================================================
 -- Section -> Feature (function button)
 -- ============================================================================
-function Section:Select() self.Window:SelectSection(self) end
+function Section:Select()
+self.Window:SelectSection(self)
+end
 local function buildCard(feature)
 local win = feature.Window
 local theme = win.Theme
@@ -1085,11 +1221,21 @@ feature._ui = {
 Card = card, Fill = fill, Desc = desc, Stroke = cardStroke, Title = title,
 Gear = gear, BindBtn = bindBtn, Hover = false,
 }
-card.MouseButton1Click:Connect(function() feature:Toggle() end)
-card.MouseButton2Click:Connect(function() feature:ToggleSettings() end)
-gearBtn.MouseButton1Click:Connect(function() feature:ToggleSettings() end)
-gearBtn.MouseEnter:Connect(function() gear.Tint(WHITE, true) end)
-gearBtn.MouseLeave:Connect(function() gear.Tint(feature.Enabled and WHITE or theme.TextMuted, true) end)
+card.MouseButton1Click:Connect(function()
+feature:Toggle()
+end)
+card.MouseButton2Click:Connect(function()
+feature:ToggleSettings()
+end)
+gearBtn.MouseButton1Click:Connect(function()
+feature:ToggleSettings()
+end)
+gearBtn.MouseEnter:Connect(function()
+gear.Tint(WHITE, true)
+end)
+gearBtn.MouseLeave:Connect(function()
+gear.Tint(feature.Enabled and WHITE or theme.TextMuted, true)
+end)
 bindBtn.MouseButton1Click:Connect(function()
 feature._capturing = true
 feature:_renderBind()
@@ -1114,7 +1260,9 @@ feature:_renderBind()
 end
 function Feature:_renderHover()
 local ui = self._ui
-if not ui then return end
+if not ui then
+return
+end
 local theme = self.Window.Theme
 if self.Enabled then
 tween(ui.Card, TWEEN_FAST, { BackgroundColor3 = theme.Card })
@@ -1125,7 +1273,9 @@ tween(ui.Stroke, TWEEN_FAST, { Color = ui.Hover and theme.BorderHover or theme.B
 end
 function Feature:_render(instant)
 local ui = self._ui
-if not ui then return end
+if not ui then
+return
+end
 local theme = self.Window.Theme
 local on = self.Enabled
 local info = instant and TWEEN_NOW or TWEEN_FAST
@@ -1137,7 +1287,9 @@ ui.Gear.Tint(on and WHITE or theme.TextMuted, not instant)
 end
 function Feature:_renderBind()
 local ui = self._ui
-if not ui then return end
+if not ui then
+return
+end
 local theme = self.Window.Theme
 if self._capturing then
 ui.BindBtn.Text = self.Window.Strings.Listening
@@ -1149,7 +1301,9 @@ end
 end
 function Feature:_setState(state, fromHotkey, silent)
 state = state and true or false
-if state == self.Enabled then return end
+if state == self.Enabled then
+return
+end
 self.Enabled = state
 self:_render()
 if not silent then
@@ -1161,9 +1315,15 @@ local s = self.Window.Strings
 self.Window:Notify(self.Name, state and s.Enabled or s.Disabled, 2.2, state)
 end
 end
-function Feature:Set(state, silent) self:_setState(state, false, silent) end
-function Feature:Get() return self.Enabled end
-function Feature:Toggle() self:_setState(not self.Enabled, false, false) end
+function Feature:Set(state, silent)
+self:_setState(state, false, silent)
+end
+function Feature:Get()
+return self.Enabled
+end
+function Feature:Toggle()
+self:_setState(not self.Enabled, false, false)
+end
 function Feature:SetKeybind(key, silent)
 self.Keybind = normalizeKey(key)
 self:_renderBind()
@@ -1172,17 +1332,23 @@ fire(self.OnBind, self.Keybind)
 self.Window:_autoSave()
 end
 end
-function Feature:GetKeybind() return self.Keybind end
+function Feature:GetKeybind()
+return self.Keybind
+end
 -- Feature settings window ----------------------------------------------------
 function Feature:_buildSetting(setting)
 local def = SettingTypes[setting.Kind]
 def.Build(setting, self._list)
 end
 function Feature:_updateNoSettings()
-if self._noSettings then self._noSettings.Visible = #self.Settings == 0 end
+if self._noSettings then
+self._noSettings.Visible = #self.Settings == 0
+end
 end
 function Feature:_ensureEntry()
-if self._entry then return self._entry end
+if self._entry then
+return self._entry
+end
 local win = self.Window
 local theme = win.Theme
 local width = win.SettingsWidth
@@ -1192,11 +1358,14 @@ local mainX = mainBase.X.Scale * root.X + mainBase.X.Offset
 local mainY = mainBase.Y.Scale * root.Y + mainBase.Y.Offset
 local openCount = 0
 for _, f in ipairs(win._features) do
-if f._entry and f._entry.Open then openCount = openCount + 1 end
+if f._entry and f._entry.Open then
+openCount = openCount + 1
+end
 end
 local x = math.max(8, mainX - width - 14)
 local y = math.clamp(mainY + openCount * 42, 8, math.max(8, root.Y - 160))
-local entry = win:newEntry("Settings" .. self.Name, UDim2.fromOffset(width, HEADER_H + 60), UDim2.fromOffset(x, y))
+local entry = win:newEntry("Settings" .. self.Name, UDim2.fromOffset(width, HEADER_H + 60),
+UDim2.fromOffset(x, y))
 self._entry = entry
 local header = create("Frame", {
 Name = "Header", Size = UDim2.new(1, 0, 0, HEADER_H), BackgroundTransparency = 1,
@@ -1213,9 +1382,15 @@ Name = "Close", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 
 Size = UDim2.fromOffset(26, 26), BackgroundTransparency = 1, Text = "", AutoButtonColor = false,
 }, header)
 local closeIcon = newIcon(win, "Close", closeBtn, 13, theme.TextMuted)
-closeBtn.MouseEnter:Connect(function() closeIcon.Tint(theme.Text, true) end)
-closeBtn.MouseLeave:Connect(function() closeIcon.Tint(theme.TextMuted, true) end)
-closeBtn.MouseButton1Click:Connect(function() self:CloseSettings() end)
+closeBtn.MouseEnter:Connect(function()
+closeIcon.Tint(theme.Text, true)
+end)
+closeBtn.MouseLeave:Connect(function()
+closeIcon.Tint(theme.TextMuted, true)
+end)
+closeBtn.MouseButton1Click:Connect(function()
+self:CloseSettings()
+end)
 win:_makeDraggable(header, entry)
 local list = create("ScrollingFrame", {
 Name = "List", Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.new(1, 0, 1, -HEADER_H),
@@ -1239,27 +1414,43 @@ entry.Group.Size = UDim2.fromOffset(width, h)
 end
 layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateHeight)
 updateHeight()
-for _, setting in ipairs(self.Settings) do self:_buildSetting(setting) end
+for _, setting in ipairs(self.Settings) do
+self:_buildSetting(setting)
+end
 self:_updateNoSettings()
 return entry
 end
 function Feature:OpenSettings()
 local win = self.Window
 local entry = self:_ensureEntry()
-if entry.Open then win:_bringToFront(entry) return end
+if entry.Open then
+win:_bringToFront(entry)
+return
+end
 entry.Open = true
 win:_bringToFront(entry)
-if win._visible then win:_setEntryVisible(entry, true) end
+if win._visible then
+win:_setEntryVisible(entry, true)
+end
 end
 function Feature:CloseSettings()
 local entry = self._entry
-if not entry or not entry.Open then return end
+if not entry or not entry.Open then
+return
+end
 entry.Open = false
-if self.Window._visible then self.Window:_setEntryVisible(entry, false)
-else entry.Group.Visible = false end
+if self.Window._visible then
+self.Window:_setEntryVisible(entry, false)
+else
+entry.Group.Visible = false
+end
 end
 function Feature:ToggleSettings()
-if self._entry and self._entry.Open then self:CloseSettings() else self:OpenSettings() end
+if self._entry and self._entry.Open then
+self:CloseSettings()
+else
+self:OpenSettings()
+end
 end
 function Feature:AddSetting(kind, opts)
 local def = SettingTypes[kind]
@@ -1276,28 +1467,52 @@ Order = #self.Settings + 1,
 }, Setting)
 def.Init(setting, opts)
 table.insert(self.Settings, setting)
-if self._list then self:_buildSetting(setting) end
+if self._list then
+self:_buildSetting(setting)
+end
 self:_updateNoSettings()
 return setting
 end
-function Feature:AddToggle(opts) return self:AddSetting("Toggle", opts) end
-function Feature:AddSlider(opts) return self:AddSetting("Slider", opts) end
-function Feature:AddKeybind(opts) return self:AddSetting("Keybind", opts) end
-function Feature:AddTextBox(opts) return self:AddSetting("TextBox", opts) end
+function Feature:AddToggle(opts)
+return self:AddSetting("Toggle", opts)
+end
+function Feature:AddSlider(opts)
+return self:AddSetting("Slider", opts)
+end
+function Feature:AddKeybind(opts)
+return self:AddSetting("Keybind", opts)
+end
+function Feature:AddTextBox(opts)
+return self:AddSetting("TextBox", opts)
+end
 function Feature:Destroy()
 local win = self.Window
-if self._entry then self._entry.Group:Destroy() self._entry = nil end
-if self._ui then self._ui.Card:Destroy() self._ui = nil end
+if self._entry then
+self._entry.Group:Destroy()
+self._entry = nil
+end
+if self._ui then
+self._ui.Card:Destroy()
+self._ui = nil
+end
 for i, f in ipairs(win._features) do
-if f == self then table.remove(win._features, i) break end
+if f == self then
+table.remove(win._features, i)
+break
+end
 end
 for i, f in ipairs(self.Section.Features) do
-if f == self then table.remove(self.Section.Features, i) break end
+if f == self then
+table.remove(self.Section.Features, i)
+break
+end
 end
 win:_refresh()
 end
 function Section:AddFunction(opts)
-if type(opts) == "string" then opts = { Name = opts } end
+if type(opts) == "string" then
+opts = { Name = opts }
+end
 opts = opts or {}
 local win = self.Window
 local name = opts.Name or "Function"
@@ -1344,8 +1559,7 @@ win.SettingsWidth = opts.SettingsWidth or 252
 win.ConfigFolder = opts.ConfigFolder or "CelestialConfigs"
 win.CurrentConfig = opts.AutoLoad or "default"
 win.AutoSave = opts.AutoSave ~= false
-win._loadingConfig
-= false
+win._loadingConfig = false
 win.Sections = {}
 win._features = {}
 win._conns = {}
@@ -1363,7 +1577,9 @@ local W, H = size.X, size.Y
 local guiName = opts.GuiName or "CelestialGui"
 local parent = resolveParent(opts.Parent)
 local old = parent:FindFirstChild(guiName)
-if old then old:Destroy() end
+if old then
+old:Destroy()
+end
 local gui = create("ScreenGui", {
 Name = guiName, ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 IgnoreGuiInset = true, DisplayOrder = opts.DisplayOrder or 100,
@@ -1386,7 +1602,9 @@ local body = main.Body
 local topBar = create("Frame", {
 Name = "TopBar", Size = UDim2.new(1, 0, 0, TOP_H), BackgroundTransparency = 1,
 }, body)
-if opts.Draggable ~= false then win:_makeDraggable(topBar, main) end
+if opts.Draggable ~= false then
+win:_makeDraggable(topBar, main)
+end
 local logo = newLogo(win, topBar, 38)
 logo.Position = UDim2.fromOffset(16, 13)
 newText(win, "TextLabel", topBar, {
@@ -1413,7 +1631,9 @@ win.SearchInput.FocusLost:Connect(function()
 tween(searchStroke, TWEEN_FAST, { Color = theme.Border })
 searchIcon.Tint(theme.TextMuted, true)
 end)
-win.SearchInput:GetPropertyChangedSignal("Text"):Connect(function() win:_refresh() end)
+win.SearchInput:GetPropertyChangedSignal("Text"):Connect(function()
+win:_refresh()
+end)
 create("Frame", {
 Name = "Divider", Position = UDim2.fromOffset(SIDE_W, 14), Size = UDim2.new(0, 1, 1, -28),
 BackgroundColor3 = theme.Border, BorderSizePixel = 0,
@@ -1465,24 +1685,34 @@ Text = strings.NoResults, TextSize = 12, TextColor3 = theme.TextDim, TextXAlignm
 Visible = false,
 })
 win:_track(UserInputService.InputBegan:Connect(function(input, processed)
-if win._destroyed or input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+if win._destroyed or input.UserInputType ~= Enum.UserInputType.Keyboard then
+return
+end
 if win._capture then
 local cap = win._capture
 win._capture = nil
-if input.KeyCode == Enum.KeyCode.Escape then cap.Cancel()
-elseif input.KeyCode == Enum.KeyCode.Backspace or input.KeyCode == Enum.KeyCode.Delete then cap.OnKey(nil)
-else cap.OnKey(input.KeyCode) end
+if input.KeyCode == Enum.KeyCode.Escape then
+cap.Cancel()
+elseif input.KeyCode == Enum.KeyCode.Backspace or input.KeyCode == Enum.KeyCode.Delete then
+cap.OnKey(nil)
+else
+cap.OnKey(input.KeyCode)
+end
 return
 end
 if input.KeyCode == win.ToggleKey then
 win:Toggle()
 return
 end
-if processed then return end
+if processed then
+return
+end
 win:_handleHotkey(input.KeyCode)
 end))
 gui.Parent = parent
-if opts.Visible ~= false then win:Show() end
+if opts.Visible ~= false then
+win:Show()
+end
 return win
 end
 return Library
