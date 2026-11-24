@@ -1,24 +1,4 @@
-getgenv().RAYFIELD_SECURE =  true
--- getgenv().RAYFIELD_ASSET_ID = 138361542409015
-
-print("Launch Celestial Client")
---GUI
-local Rayfield = loadstring(game:HttpGet("https://sirius.menu/gen2"))()
-local Window = Rayfield:CreateWindow({
-   Name = "Celestial Client",
-   LoadingTitle = "Unstable SMP Client",
-   LoadingSubtitle = "made by blebik",
-   configuration = {
-        autoSave = true,     
-        autoLoad = true,  
-        fileName = "AutoConfig",
-        customFolder = "Celestial Client",
-    },
-   theme = "Amethyst",
-})
-local UtilsTab = Window:CreateTab({ name = "Utils"})
-local CombatTab = Window:CreateTab({ name = "Combat"})
-local ConfigTab = Window:CreateTab({ name = "Configs"})
+local Library = loadstring(game:HttpGet("https://raw.githubusercontent.com/blebMaster/CelestialClientLua/refs/heads/main/CelestialLibrary"))()
 
 
 
@@ -26,6 +6,7 @@ local Players = game:GetService("Players")
 local plr = Players.LocalPlayer
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting = game:GetService("Lighting")
 local PlayerScripts = Players.LocalPlayer.PlayerScripts.MC
 local World = require(PlayerScripts.World)
 local Controller = require(Players.LocalPlayer.PlayerScripts.MC.Controller)
@@ -38,13 +19,40 @@ local triggerBot = false
 local nextTriggerBotAtack = 0
 local TriggerBotAttackCooldown = 0.5
 local OnlyCritsForTriggerBot = false
+local MaceAutoSwapTriggerBot = false
 local weapons = {"netherite_sword","mace","netherite_spear","diamond_spear","netherite_axe","trident_in_hand","diamond_sword","iron_sword"}
 local HitBoxExpansion = 1
 local ReachDist = 0
 local AutoTotem = false
 local lastSwap = 0
-local SelectedConfig = "none"
-local ConfigNameForSave = nil
+
+local HttpService = game:GetService("HttpService")
+local CONFIG_FILE = "CelestialConfig.json"
+
+local Registry = {} 
+local ConfigData = {}
+local IsLoading = false
+
+
+local Window = Library:CreateWindow({
+    Name = "Celestial",
+    ToggleKey = Enum.KeyCode.Z, -- плавно открывает / закрывает GUI
+    Strings = {
+        Search = "Поиск функции...",
+        Enabled = "Включено",
+        Disabled = "Выключено",
+        NoResults = "Ничего не найдено",
+        NoSettings = "Нет настроек",
+        Exit = "Выйти",
+        BindNone = "НЕТ",
+    },
+})
+
+-- Разделы (Category - подпись группы в списке слева)
+local Utils = Window:AddSection({ Name = "Utils", Category = "Main" })
+local Combat = Window:AddSection({ Name = "Combat" })
+local Visual = Window:AddSection({ Name = "Visual" })
+
 for i, upval in ipairs(getupvalues(Net.send)) do
     if typeof(upval) == "function" then
         hookfunction(upval, newcclosure(function()
@@ -56,91 +64,132 @@ for i, upval in ipairs(getupvalues(Net.send)) do
 end
 
 
-
-local TriggerBotToggle = CombatTab:CreateToggle({
-   Name = "Trigger Bot",
-   flag = "TriggerBotToggle",
-   CurrentValue = triggerBot,
-   Callback = function(v)
-        triggerBot = v
-   end,
-})
-local TriggerBotCritsToggle = CombatTab:CreateToggle({
-   Name = "Only Crits",
-   flag = "TriggerBotCritsToggle",
-   CurrentValue = OnlyCritsForTriggerBot,
-   Callback = function(v)
-        OnlyCritsForTriggerBot = v
-   end,
-})
-CombatTab:CreateDivider()
-
-RunService.RenderStepped:Connect(function()
-    if not triggerBot then return end
-    local char = plr.Character
-    local time = os.clock()
-    if time < nextTriggerBotAtack then return end
-    if not char or not char:GetAttribute("Alive") then return end
-    if not Controller.state or Input.mouseFree or Hands.using then return end
-    if not CharHaveWeapon() then return end
-    local OnlyFullCharge = true
-    if char:FindFirstChild("mace") then OnlyFullCharge = false end
-    if OnlyFullCharge and Hands.strength() < 0.92 then
-        return
+function SaveConfig()
+    if IsLoading then return end
+    if writefile then
+        writefile(CONFIG_FILE, HttpService:JSONEncode(ConfigData))
     end
-    local eye = Controller.eye()
-    local look = Controller.look()
-    if not eye or not look then return end
-    local target, dist = World.pick(eye, look, Config.REACH+ReachDist)
-    if target then
-        local webHit = World.blockRay(eye, look, 4.5, { "Webs" })
-        if webHit and webHit.dist <= dist then
-            return
+end
+
+
+function Register(id, obj, defaultVal)
+    Registry[id] = obj
+    ConfigData[id] = defaultVal
+    return obj
+end
+
+
+
+local function LoadConfig()
+    if not (isfile and readfile and isfile(CONFIG_FILE)) then return end
+    
+    local ok, decoded = pcall(function()
+        return HttpService:JSONDecode(readfile(CONFIG_FILE))
+    end)
+    if not ok or type(decoded) ~= "table" then return end
+
+    IsLoading = true
+    for key, value in pairs(decoded) do
+        local obj = Registry[key]
+        if obj then
+            if key:match("_Bind$") then
+                local bindKey = (value ~= "NONE") and Enum.KeyCode[value] or nil
+                obj:SetKeybind(bindKey)
+
+            elseif obj.Kind == "Keybind" then
+                local bindKey = (value ~= "NONE") and Enum.KeyCode[value] or nil
+                obj:Set(bindKey)
+            else
+                obj:Set(value)
+            end
+            ConfigData[key] = value
         end
-        if OnlyCritsForTriggerBot then
-            local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
-            if hrp and hrp.AssemblyLinearVelocity.Y < -1 then
-                mouse1click()   
-                nextTriggerBotAtack = time + TriggerBotAttackCooldown
-            end   
-          
-        else
-            nextTriggerBotAtack = time + TriggerBotAttackCooldown     
-            mouse1click()
-        end  
     end
-end)
+    IsLoading = false
+end
+
+
+local TriggerBotFunc,OnlyCritsTriggerBotToggle,MaceAutoSwapToggle
+TriggerBotFunc = Register("TriggerBotFunc",Combat:AddFunction({
+    Name = "Trigger Bot",
+    Description = "Автоматически бьет цель при наведении",
+    Callback = function(state)
+        ConfigData["TriggerBotFunc"] = state
+        SaveConfig()
+        triggerBot = state
+    end,
+}))
+
+OnlyCritsTriggerBotToggle = Register("OnlyCritsTriggerBotToggle",TriggerBotFunc:AddToggle({
+    Name = "Only Crits",
+    Default = OnlyCritsForTriggerBot,
+    Callback = function(value)
+        ConfigData["OnlyCritsTriggerBotToggle"] = value
+        SaveConfig()
+        OnlyCritsForTriggerBot = value
+    end,
+}))
+
+MaceAutoSwapToggle = Register("MaceAutoSwapToggle",TriggerBotFunc:AddToggle({
+    Name = "Auto swaps to mace when you falling from 2 blocks",
+    Default = MaceAutoSwapTriggerBot,
+    Callback = function(value)
+        ConfigData["MaceAutoSwapToggle"] = value
+        SaveConfig()
+        MaceAutoSwapTriggerBot = value
+    end,
+}))
+
+HitBoxExpansionFunc = Register("HitBoxExpansionFunc",Combat:AddFunction({
+    Name = "Hitbox Size",
+    Description = "меняет размер хитбоксов у сущностей",
+    Callback = function(state)
+        ConfigData["HitBoxExpansionFunc"] = state
+        SaveConfig()
+        if state then HitBoxExpansion = HitBoxExpansionSlider:Get() else HitBoxExpansion = 1 end
+    end,
+}))
+
+HitBoxExpansionSlider = Register("HitBoxExpansionSlider",HitBoxExpansionFunc:AddSlider({
+    Name = "Size",
+    Min = 1, Max = 5, Default = HitBoxExpansion, Increment = 1,
+    Callback = function(value)
+        ConfigData["HitBoxExpansionSlider"] = value
+        SaveConfig()
+        if HitBoxExpansionFunc:Get() then HitBoxExpansion = value end
+    end,
+}))
+
+
+ReachFunc = Register("ReachFunc",Combat:AddFunction({
+    Name = "Reach",
+    Description = "меняет размер хитбоксов у сущностей",
+    Callback = function(state)
+        ConfigData["ReachFunc"] = state
+        SaveConfig()
+        if state then ReachDist = ReachSlider:Get() else ReachDist = 0 end
+    end,
+}))
+
+ReachSlider = Register("ReachSlider",ReachFunc:AddSlider({
+    Name = "Distance",
+    Min = 0, Max = 1.5, Default = ReachDist, Increment = 0.25,
+    Callback = function(value)
+        ConfigData["ReachSlider"] = value
+        SaveConfig()
+        if ReachFunc:Get() then ReachDist = value end
+    end,
+}))
 
 
 
-local HitBoxExpansionSlider = CombatTab:CreateSlider({
-   Name = "HitBox Size ",
-   flag = "HitBoxExpansionSlider",
-   Range = {1, 5},
-   Increment = 1,
-   CurrentValue = HitBoxExpansion,
-   Callback = function(v)
-      HitBoxExpansion= v
-   end,
-})
 
-local ReachSlider = CombatTab:CreateSlider({
-   Name = "Reach",
-   flag = "ReachSlider",
-   Range = {0, 1.5},
-   Increment = 0.25,
-   CurrentValue = ReachDist,
-   Callback = function(v)
-      ReachDist= v
-   end,
-})
-
-CombatTab:CreateDivider()
 local oldPick = World.pick
 World.pick = function(origin, dir, reach, padding)
     local newReach = reach + ReachDist
     return oldPick(origin, dir, newReach, padding)
 end
+
 
 
 local oldRayBox = World.rayBox
@@ -150,27 +199,168 @@ World.rayBox = function(origin, dir, feet, height, padding, width)
     return oldRayBox(origin, dir, feet, newHeight, padding, newWidth)
 end
 
-local SpeedMultiplier = UtilsTab:CreateSlider({
-   Name = "Speed Multiplier",
-   flag = "SpeedMultiplier",
-   Range = {1, 5},
-   Increment = 0.5,
-   CurrentValue = 1,
-   Callback = function(v)
-        if plr.Character and plr.Character:GetAttribute("SpeedMult") then
-            plr.Character:SetAttribute("SpeedMult",v)
-        end
-   end,
-})
-local AutoTotemToggle = UtilsTab:CreateToggle({
-   Name = "Auto Totem of Undying",
-   flag = "AutoTotemToggle",
-   CurrentValue = AutoTotem,
-   Callback = function(v)
-        AutoTotem = v
-   end,
-})
 
+
+
+-- RunService.RenderStepped:Connect(function()
+--     if not triggerBot then return end
+--     local char = plr.Character
+--     local time = os.clock()
+--     if time < nextTriggerBotAtack then return end
+--     if not char or not char:GetAttribute("Alive") then return end
+--     if not Controller.state or Input.mouseFree or Hands.using then return end
+--     local Falling = Controller.state and Controller.state.fallDistance >= 2
+--     if not CharHaveWeapon() or not(MaceAutoSwapTriggerBot and Falling) then return end
+--     local OnlyFullCharge = true
+--     if char:FindFirstChild("mace") or (MaceAutoSwapTriggerBot and getSlotByName("mace")) then OnlyFullCharge = false end
+--     if OnlyFullCharge and Hands.strength() < 0.92 then
+--         return
+--     end
+--     local eye = Controller.eye()
+--     local look = Controller.look()
+--     if not eye or not look then return end
+--     local target, dist = World.pick(eye, look, Config.REACH+ReachDist)
+--     if target then
+--         local webHit = World.blockRay(eye, look, 4.5, { "Webs" })
+--         if webHit and webHit.dist <= dist then
+--             return
+--         end
+--         if OnlyCritsForTriggerBot then
+--             local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+--             if hrp and hrp.AssemblyLinearVelocity.Y < -1 then
+--                 if Falling and MaceAutoSwapTriggerBot then 
+--                     local SlotNow = Hands.inv.selected
+--                     local maceSlot = getSlotByName("mace")
+--                     if maceSlot and maceSlot ~= SlotNow then
+--                         Hands.select(maceSlot)
+--                         task.delay(0.1,function()
+--                             Hands.select(SlotNow)
+--                         end)
+--                     end    
+--                 end    
+--                 mouse1click()   
+--                 nextTriggerBotAtack = time + TriggerBotAttackCooldown
+--             end   
+--         else
+--             if Falling and MaceAutoSwapTriggerBot then 
+--                 local SlotNow = Hands.inv.selected
+--                 local maceSlot = getSlotByName("mace")
+--                 if maceSlot then
+--                     Hands.select(maceSlot)
+--                     task.delay(0.1,function()
+--                         Hands.select(SlotNow)
+--                     end)
+--                 end    
+--             end    
+--             nextTriggerBotAtack = time + TriggerBotAttackCooldown     
+--             mouse1click()
+--         end  
+--     end
+-- end)
+
+
+
+RunService.RenderStepped:Connect(function()
+    if not triggerBot then return end
+    local time = os.clock()
+    if time < nextTriggerBotAtack then return end
+    local char = plr.Character
+    if not char or not char:GetAttribute("Alive") then return end
+    if not Controller.state or Input.mouseFree or Hands.using then return end
+    local eye = Controller.eye()
+    local look = Controller.look()
+    if not eye or not look then return end
+    local target, dist = World.pick(eye, look, Config.REACH+ReachDist)
+    local hrp = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+    if target then
+        local webHit = World.blockRay(eye, look, 4.5, { "Webs" })
+        if webHit and webHit.dist <= dist then
+            return
+        end
+        if MaceAutoSwapTriggerBot then
+            local Falling = Controller.state and Controller.state.fallDistance >= 2.5
+            if Falling then 
+                local MaceSlot = getSlotByName("mace")
+                local SlotNow = Hands.inv.selected
+                if not MaceSlot then return end
+                if MaceSlot ~= SlotNow then 
+                    Hands.select(MaceSlot)
+                    task.delay(0.1,function() Hands.select(SlotNow) end)
+                end
+                mouse1click()
+                nextTriggerBotAtack = time + TriggerBotAttackCooldown
+                return
+            else
+                if OnlyCritsForTriggerBot then
+                    if hrp and hrp.AssemblyLinearVelocity.Y < -1 then
+                        mouse1click()
+                        nextTriggerBotAtack = time + TriggerBotAttackCooldown
+                        return
+                    end
+                else
+                
+                    mouse1click()
+                    nextTriggerBotAtack = time + TriggerBotAttackCooldown
+                    return
+                end
+            end
+        else    
+            if not CharHaveWeapon() then return end
+            if OnlyCritsForTriggerBot then
+                if hrp and hrp.AssemblyLinearVelocity.Y < -1 then
+                    mouse1click()
+                    nextTriggerBotAtack = time + TriggerBotAttackCooldown
+                    return
+                end    
+            else
+                mouse1click()
+                nextTriggerBotAtack = time + TriggerBotAttackCooldown
+                return
+            end
+        end
+    end    
+end)
+
+
+SpeedMultiplierFunc = Register("SpeedMultiplierFunc",Utils:AddFunction({
+    Name = "Speed Multiplier",
+    Description = "изменяет скорость",
+    Callback = function(state)
+        ConfigData["SpeedMultiplierFunc"] = state
+        SaveConfig()
+         if state then 
+            if plr.Character and plr.Character:GetAttribute("SpeedMult") then
+                plr.Character:SetAttribute("SpeedMult",SpeedMultiplierSlider:Get())
+            end
+        end
+    end,
+}))
+
+SpeedMultiplierSlider = Register("SpeedMultiplierSlider",SpeedMultiplierFunc:AddSlider({
+    Name = "Size",
+    Min = 1, Max = 3, Default = 1, Increment = 0.5,
+    Callback = function(value)
+        ConfigData["SpeedMultiplierSlider"] = value
+        SaveConfig()
+        if SpeedMultiplierFunc:Get() then 
+            if plr.Character and plr.Character:GetAttribute("SpeedMult") then
+                plr.Character:SetAttribute("SpeedMult",value)
+            end
+         end
+    end,
+}))
+
+
+
+AutoTotemFunc = Register("AutoTotemFunc",Utils:AddFunction({
+    Name = "Auto Totem",
+    Description = "берёт тотем в правую руку если есть в хотбаре",
+    Callback = function(state)
+        ConfigData["AutoTotemFunc"] = state
+        SaveConfig()
+        AutoTotem = state
+    end,
+}))
 
 RunService.Heartbeat:Connect(function()
     if not AutoTotem then return end
@@ -191,8 +381,6 @@ RunService.Heartbeat:Connect(function()
             end
             task.wait(0.1)
             Net.send({ a = "swap" })
-            
-    
             local temp = Hands.inv.hotbar[slot]
             Hands.inv.hotbar[slot] = Hands.inv.offhand
             Hands.inv.offhand = temp
@@ -204,104 +392,25 @@ RunService.Heartbeat:Connect(function()
     end
 end)
 
-
-local ConfigList = ConfigTab:CreateDropdown({
-    name = "Config List",
-    multiSelect = false,
-    options = Window:ListConfigs(),
-    value = Window:ListConfigs()[1] or "none",
-    callback = function(selected)
-        SelectedConfig = selected
+ElytraSwapFunc = Register("ElytraSwapFunc",Utils:AddFunction({
+    Name = "Elytra Swap",
+    Description = "При нажатии на горячую клавишу меняет броню на нагрудник/элитру",
+    Callback = function(state) 
+        ConfigData["PearlCatchFunc"] = state
+        SaveConfig()
     end,
-})
+}))
 
-local LoadConfigButton = ConfigTab:CreateButton({
-    name = "Load Config",
-    callback = function()
-    if SelectedConfig then
-        print(SelectedConfig)
-        Window:Load(SelectedConfig) 
-        Window:Notify({
-            title = "Load Config",
-            content = "Your config ".. SelectedConfig.. "was Loaded",
-            duration = 7,
-        })
-    end    
-    end,
-})
-
-local ConfigNameInput = ConfigTab:CreateInput({
-    name = "Config Name",
-    numeric = false,
-    value = "AutoConfig",
-    placeholder = "Enter a config name",
-    callback = function(text)
-        ConfigNameForSave = text  
-    end,
-})
-
-
-local LoadConfigButton = ConfigTab:CreateButton({
-    name = "Save Config",
-    callback = function()
-        if ConfigNameForSave then
-          Save(ConfigNameForSave) 
-        end
-    end,
-})
-
-local LoadConfigButton = ConfigTab:CreateButton({
-    name = "Delete Config",
-    callback = function()
-        if SelectedConfig then
-            Window:Popup({
-                title = "Delete ".. SelectedConfig .. "?",
-                content = "You can't undo it.",
-                options = {
-                    { text = "Cancel" },
-                    { text = "Delete Config", style = "danger", callback = function() Window:DeleteConfig(SelectedConfig) ConfigList:Refresh(Window:ListConfigs()) end },
-                },
-            })
-        else
-            Window:Notify({
-                title = "Error",
-                content = "Didnt selected any config",
-                duration = 7,
-            })
-        end
-    end,
-})
-
-
-function Save(Name)
-    Window:Save(Name) 
-    ConfigList:Refresh(Window:ListConfigs())
-end
-
-
-function CharHaveWeapon()
-    if not plr.Character then return false end
-    local haveWeapon = false
-    for i,v in pairs(weapons) do
-        if not plr.Character then break
-        elseif plr.Character and plr.Character:FindFirstChild(v) then 
-        haveWeapon = true
-        break
-        end
-    end
-    return haveWeapon
-end
-
-
-
-UtilsTab:CreateKeybind({
-    name = "Elytra Swap",
-    flag = "ElytraSwap",
-    value = Enum.KeyCode.X,
-    callback = function(key)
+local ElytraSwapBind =  Register("ElytraSwapBind",ElytraSwapFunc:AddKeybind({
+    Name = "Кнопка свапа",
+    Pressed = function() 
         ElytraSwap()
     end,
-})
+    Callback = function(key) 
+        ConfigData["ElytraSwapBind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end,
+}))
 
 
 function ElytraSwap()
@@ -335,32 +444,44 @@ function ElytraSwap()
         end
     end
     Window:Notify({
-    title = "Elytra Swap",
-    content = "Elytra Swap doesnt find"..targetName .."in your hotbar",
-    duration = 3,
+    "Elytra Swap",
+    "Elytra Swap doesnt find"..targetName .."in your hotbar",
+    3
 })
 end
 
-UtilsTab:CreateKeybind({
-    name = "Firework bind",
-    flag = "FireworkBind",
-    value = nil,
-    callback = function(key)
+FireworkBindFunc = Register("FireworkBindFunc",Utils:AddFunction({
+    Name = "Firework Key Bind",
+    Description = "При нажатии на горячую клавишу использует фейерверк",
+    Callback = function(state) 
+        ConfigData["PearlCatchFunc"] = state
+        SaveConfig()
+    end,
+}))
+
+FireworkBind = Register("FireworkBind",FireworkBindFunc:AddKeybind({
+    Name = "Кнопка активации",
+    Callback = function(key) 
+        ConfigData["FireworkBind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end,
+    Pressed = function() 
         UseFirework()
     end,
-})
+}))
+
 
 function UseFirework()
-    local prevSlot = Hands.inv.selected
     local wearingElytra = Hands.inv.armor and Hands.inv.armor.chest and Hands.inv.armor.chest.id == "elytra"
     if not wearingElytra then
         Window:Notify({
-        title = "firework Bind",
-        content = "Equip Elytra before using this bind",
-        duration = 5,
+        "firework Bind",
+        "Equip Elytra before using this bind",
+        5,
         })
         return
     end
+    local prevSlot = Hands.inv.selected
     for slot = 1, 9 do
         local item = Hands.inv.hotbar[slot]
         if item and item.id:find("firework") then
@@ -384,21 +505,33 @@ function UseFirework()
         end
     end
     Window:Notify({
-    title = "Firework Bind",
-    content = "Firework Bind doesnt find Fireworks in your hotbar",
-    duration = 3,
+    "Firework Bind",
+    "Firework Bind doesnt find Fireworks in your hotbar",
+    3,
 })
 end
 
-UtilsTab:CreateKeybind({
-    name = "Pearl Catch Bind",
-    flag = "PearlCatch",
-    value = nil,
-    callback = function(key)
+
+
+PearlCatchFunc = Register("PearlCatchFunc",Utils:AddFunction({
+    Name = "PearlCatchFunc Key Bind",
+    Description = "При нажатии на горячую клавишу делает pearl catch по направлению взгяда",
+    Callback = function(state) 
+        ConfigData["PearlCatchFunc"] = state
+        SaveConfig()
+    end,
+}))
+
+PearlCatchBind = Register("PearlCatchBind",PearlCatchFunc:AddKeybind({
+    Name = "Кнопка активации",
+    Callback = function(key) 
+        ConfigData["PearlCatchBind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end,
+    Pressed = function() 
         AutoPearlCatch()
     end,
-})
-
+}))
 
 
 function AutoPearlCatch()
@@ -443,17 +576,42 @@ function AutoPearlCatch()
     Hands.select(prevSlot)
 end
 
+local NightFunc, TimeSlider
+NightFunc = Register("NightFunc",Visual:AddFunction({
+    Name = "Time Change",
+    Description = "Меняет время суток на выбранное время",
+    Callback = function(state)
+        ConfigData["NightFunc"] = state
+        SaveConfig()
+        Lighting.ClockTime = state and TimeSlider:Get() or 14
+    end,
+}))
 
-local function getOrCreateLine(id)
-    if not lines[id] then
-        local line = Drawing.new("Line")
-        line.Thickness = LINE_THICKNESS
-        line.Color = LINE_COLOR
-        line.Transparency = LINE_TRANSPARENCY
-        line.Visible = false
-        lines[id] = line
+TimeSlider = Register("TimeSlider",NightFunc:AddSlider({
+    Name = "Время",
+    Min = 0, Max = 24, Default = 0, Increment = 1,
+    Callback = function(value)
+        ConfigData["TimeSlider"] = value
+        SaveConfig()
+        if NightFunc:Get() then
+            Lighting.ClockTime = value
+        end
+    end,
+}))
+
+
+
+function CharHaveWeapon()
+    if not plr.Character then return false end
+    local haveWeapon = false
+    for i,v in pairs(weapons) do
+        if not plr.Character then break
+        elseif plr.Character and plr.Character:FindFirstChild(v) then 
+        haveWeapon = true
+        break
+        end
     end
-    return lines[id]
+    return haveWeapon
 end
 
 
@@ -467,4 +625,9 @@ function getSlotByName(ItemName)
 end
 
 
-print("Loading Ended")
+
+
+
+LoadConfig()
+
+print("запущенно")
