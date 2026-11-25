@@ -33,6 +33,15 @@
         Feature:AddToggle ({ Name = "...", Default = true, Callback = function(v) end })
         Feature:AddSlider ({ Name = "...", Min = 0, Max = 10, Default = 5, Increment = 0.5, Suffix = "", Callback = function(v) end })
         Feature:AddKeybind({ Name = "...", Default = Enum.KeyCode.X, Callback = function(key) end, Pressed = function(key) end })
+        Feature:AddDropdown({ Name = "...", Options = { "A", "B", "C" }, Default = "A", Callback = function(value) end })
+        Feature:AddInput  ({ Name = "...", Default = "", Placeholder = "...", MaxLength = 32, Live = false,
+                             Callback = function(text) end })
+        Feature:AddInput  ({ Name = "...", Numeric = true, Min = 0, Max = 100, Default = 50,
+                             Callback = function(number) end })   -- Numeric: only numbers, Get() returns a number
+
+    Dropdown:  click the pill -> list opens under it (scrolls after 6 items), click an option to pick it.
+               dropdown:SetOptions({ "X", "Y" })  -- replace the list at runtime
+    Input:     Callback fires when the field loses focus (Enter / click away); Live = true fires on every keystroke.
 
     Objects:
         Window :AddSection(opts) / :Notify(title, text, duration, positive) / :Show() / :Hide() / :Toggle()
@@ -60,7 +69,7 @@ local Players = game:GetService("Players")
 
 local Library = {}
 Library.__index = Library
-Library.Version = "1.0.0"
+Library.Version = "1.1.0"
 
 local Window = {}
 Window.__index = Window
@@ -226,6 +235,27 @@ local function utf8Lower(s)
     return string.lower(s)
 end
 
+local function indexOf(list, value)
+    for i, v in ipairs(list) do
+        if v == value then
+            return i
+        end
+    end
+    return nil
+end
+
+-- cut a string to maxLen characters (UTF-8 aware, so Cyrillic is never cut in half)
+local function truncateText(text, maxLen)
+    if not maxLen then
+        return text
+    end
+    local len = utf8.len(text)
+    if len and len > maxLen then
+        return string.sub(text, 1, utf8.offset(text, maxLen + 1) - 1)
+    end
+    return text
+end
+
 local function normalizeKey(value)
     if value == nil then
         return nil
@@ -365,6 +395,18 @@ local function newIcon(win, kind, parent, size, color)
                 AnchorPoint = half, Position = center,
                 Size = UDim2.fromOffset(size * 0.8, math.max(1.5, size * 0.12)),
                 Rotation = rot, BackgroundColor3 = color, BorderSizePixel = 0,
+            }, holder)
+            corner(bar, 1)
+            add(bar, "BackgroundColor3")
+        end
+    elseif kind == "Chevron" then
+        local len = size * 0.62
+        local dx = len * 0.3536
+        for _, arm in ipairs({ { -dx, 45 }, { dx, -45 } }) do
+            local bar = create("Frame", {
+                AnchorPoint = half, Position = UDim2.new(0.5, arm[1], 0.5, 0),
+                Size = UDim2.fromOffset(len, math.max(1.5, size * 0.16)),
+                Rotation = arm[2], BackgroundColor3 = color, BorderSizePixel = 0,
             }, holder)
             corner(bar, 1)
             add(bar, "BackgroundColor3")
@@ -667,6 +709,257 @@ SettingTypes.Keybind = {
                 capturing = false
                 setting._render()
             end)
+        end)
+    end,
+}
+
+-- ----------------------------------------------------------------------------
+-- Dropdown (list opens inline, under the row)
+-- ----------------------------------------------------------------------------
+SettingTypes.Dropdown = {
+    Init = function(setting, opts)
+        setting.Options = {}
+        for _, v in ipairs(opts.Options or {}) do
+            setting.Options[#setting.Options + 1] = v
+        end
+        local default = opts.Default
+        if indexOf(setting.Options, default) == nil then
+            default = setting.Options[1]
+        end
+        setting.Value = default
+
+        -- dropdown:SetOptions({ "A", "B" })  replaces the list at runtime
+        setting.SetOptions = function(self, options)
+            self.Options = {}
+            for _, v in ipairs(options or {}) do
+                self.Options[#self.Options + 1] = v
+            end
+            if self._rebuild then
+                self._rebuild()
+            end
+            if indexOf(self.Options, self.Value) == nil then
+                self.Value = nil -- value disappeared: fall back to the first option
+                if self.Options[1] ~= nil then
+                    self:Set(self.Options[1])
+                elseif self._render then
+                    self._render()
+                end
+            end
+        end
+    end,
+    Normalize = function(setting, value)
+        if indexOf(setting.Options, value) ~= nil then
+            return value
+        end
+        return setting.Value -- unknown option: ignore
+    end,
+    Build = function(setting, parent)
+        local win = setting.Feature.Window
+        local theme = win.Theme
+        local HEAD, ITEM, MAX_VISIBLE = 30, 26, 6
+        local open = false
+        local buttons = {}
+
+        local row = create("Frame", {
+            Name = setting.Name, Size = UDim2.new(1, 0, 0, HEAD), BackgroundTransparency = 1,
+            ClipsDescendants = true, LayoutOrder = setting.Order,
+        }, parent)
+        newText(win, "TextLabel", row, {
+            Size = UDim2.new(1, -128, 0, HEAD), Text = setting.Name, TextSize = 12,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        })
+        local pill = create("TextButton", {
+            Name = "Pill", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 4),
+            Size = UDim2.fromOffset(120, 22), BackgroundColor3 = theme.Track, BorderSizePixel = 0,
+            Text = "", AutoButtonColor = false,
+        }, row)
+        corner(pill, 6)
+        local valueText = newText(win, "TextLabel", pill, {
+            Position = UDim2.fromOffset(9, 0), Size = UDim2.new(1, -30, 1, 0), TextSize = 11,
+            Weight = Enum.FontWeight.SemiBold, TextTruncate = Enum.TextTruncate.AtEnd,
+        })
+        local chevron = newIcon(win, "Chevron", pill, 10, theme.TextMuted)
+        chevron.Frame.Position = UDim2.new(1, -13, 0.5, 0)
+
+        local list = create("ScrollingFrame", {
+            Name = "Options", Position = UDim2.fromOffset(1, HEAD + 3), Size = UDim2.new(1, -2, 0, 0),
+            BackgroundColor3 = theme.Card, BorderSizePixel = 0, ScrollBarThickness = 2,
+            ScrollBarImageColor3 = theme.TextDim, CanvasSize = UDim2.new(),
+            AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollingDirection = Enum.ScrollingDirection.Y,
+        }, row)
+        corner(list, 8)
+        stroke(list, theme.Border, 1)
+        padding(list, 4, 4, 4, 4)
+        create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+
+        local function listHeight()
+            local n = #setting.Options
+            if n == 0 then
+                return 28
+            end
+            return math.min(n, MAX_VISIBLE) * ITEM + 6
+        end
+
+        local function applySize(animate)
+            local listH = open and listHeight() or 0
+            local rowH = HEAD + (open and (listH + 6) or 0)
+            local info = animate and TWEEN_FAST or TWEEN_NOW
+            tween(row, info, { Size = UDim2.new(1, 0, 0, rowH) })
+            tween(list, info, { Size = UDim2.new(1, -2, 0, listH) })
+            tween(chevron.Frame, info, { Rotation = open and 180 or 0 })
+        end
+
+        setting._render = function()
+            valueText.Text = setting.Value ~= nil and tostring(setting.Value) or "-"
+            for _, b in ipairs(buttons) do
+                local selected = b.Option == setting.Value
+                tween(b.Fill, TWEEN_FAST, { BackgroundTransparency = selected and 0 or 1 })
+                tween(b.Label, TWEEN_FAST, { TextColor3 = selected and WHITE or theme.TextMuted })
+            end
+        end
+
+        setting._rebuild = function()
+            for _, b in ipairs(buttons) do
+                b.Button:Destroy()
+            end
+            buttons = {}
+            for i, option in ipairs(setting.Options) do
+                local btn = create("TextButton", {
+                    Name = tostring(option), Size = UDim2.new(1, 0, 0, ITEM - 2), BackgroundColor3 = WHITE,
+                    BackgroundTransparency = 1, BorderSizePixel = 0, Text = "", AutoButtonColor = false,
+                    LayoutOrder = i,
+                }, list)
+                corner(btn, 6)
+                local fill = create("Frame", {
+                    Size = UDim2.fromScale(1, 1), BackgroundColor3 = WHITE, BackgroundTransparency = 1,
+                    BorderSizePixel = 0, ZIndex = 1,
+                }, btn)
+                corner(fill, 6)
+                gradient(fill, theme, 0)
+                local label = newText(win, "TextLabel", btn, {
+                    Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 1, 0), Text = tostring(option),
+                    TextSize = 11, ZIndex = 2, TextColor3 = theme.TextMuted, TextTruncate = Enum.TextTruncate.AtEnd,
+                })
+                local entry = { Option = option, Button = btn, Fill = fill, Label = label }
+                buttons[#buttons + 1] = entry
+                btn.MouseEnter:Connect(function()
+                    if setting.Value ~= option then
+                        tween(btn, TWEEN_FAST, { BackgroundTransparency = 0.93 })
+                        tween(label, TWEEN_FAST, { TextColor3 = theme.Text })
+                    end
+                end)
+                btn.MouseLeave:Connect(function()
+                    tween(btn, TWEEN_FAST, { BackgroundTransparency = 1 })
+                    if setting.Value ~= option then
+                        tween(label, TWEEN_FAST, { TextColor3 = theme.TextMuted })
+                    end
+                end)
+                btn.MouseButton1Click:Connect(function()
+                    setting:Set(option)
+                    open = false
+                    applySize(true)
+                end)
+            end
+            setting._render()
+            applySize(false)
+        end
+
+        pill.MouseButton1Click:Connect(function()
+            open = not open
+            applySize(true)
+        end)
+        setting._rebuild()
+    end,
+}
+
+-- ----------------------------------------------------------------------------
+-- Input (text field)
+-- ----------------------------------------------------------------------------
+SettingTypes.Input = {
+    Init = function(setting, opts)
+        setting.Numeric = opts.Numeric and true or false
+        setting.Min = opts.Min
+        setting.Max = opts.Max
+        setting.MaxLength = opts.MaxLength
+        setting.Placeholder = opts.Placeholder or ""
+        setting.Live = opts.Live and true or false
+        setting.Value = setting.Numeric and 0 or ""
+        if opts.Default ~= nil then
+            setting.Value = SettingTypes.Input.Normalize(setting, opts.Default)
+        end
+    end,
+    Normalize = function(setting, value)
+        if setting.Numeric then
+            local n = tonumber(value)
+            if n == nil then
+                return setting.Value -- not a number: keep the old one
+            end
+            if setting.Min then
+                n = math.max(n, setting.Min)
+            end
+            if setting.Max then
+                n = math.min(n, setting.Max)
+            end
+            return n
+        end
+        local text = tostring(value == nil and "" or value)
+        return truncateText(text, setting.MaxLength)
+    end,
+    Build = function(setting, parent)
+        local win = setting.Feature.Window
+        local theme = win.Theme
+
+        local row = create("Frame", {
+            Name = setting.Name, Size = UDim2.new(1, 0, 0, 54), BackgroundTransparency = 1,
+            LayoutOrder = setting.Order,
+        }, parent)
+        newText(win, "TextLabel", row, {
+            Size = UDim2.new(1, 0, 0, 16), Text = setting.Name, TextSize = 12,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        })
+        local field = create("Frame", {
+            Name = "Field", Position = UDim2.fromOffset(1, 21), Size = UDim2.new(1, -2, 0, 30),
+            BackgroundColor3 = theme.Card, BorderSizePixel = 0,
+        }, row)
+        corner(field, 8)
+        local fieldStroke = stroke(field, theme.Border, 1)
+        local box = newText(win, "TextBox", field, {
+            Position = UDim2.fromOffset(10, 0), Size = UDim2.new(1, -20, 1, 0), TextSize = 12,
+            PlaceholderText = setting.Placeholder, PlaceholderColor3 = theme.TextDim,
+            ClearTextOnFocus = false, ClipsDescendants = true,
+        })
+        table.insert(win._textBoxes, box)
+
+        setting._render = function()
+            local shown = tostring(setting.Value)
+            -- never overwrite the text while the player is typing
+            if box.Text ~= shown and not box:IsFocused() then
+                box.Text = shown
+            end
+        end
+        setting._render()
+
+        box.Focused:Connect(function()
+            tween(fieldStroke, TWEEN_FAST, { Color = theme.Accent })
+        end)
+        box.FocusLost:Connect(function()
+            tween(fieldStroke, TWEEN_FAST, { Color = theme.Border })
+            setting:Set(box.Text)
+            setting._render()
+        end)
+        box:GetPropertyChangedSignal("Text"):Connect(function()
+            local text = box.Text
+            if setting.Numeric then
+                text = string.gsub(text, "[^%d%.%-]", "")
+            end
+            text = truncateText(text, setting.MaxLength)
+            if text ~= box.Text then
+                box.Text = text
+                return
+            end
+            if setting.Live then
+                setting:Set(text)
+            end
         end)
     end,
 }
@@ -1039,7 +1332,11 @@ function Window:Hide()
     end
     self._visible = false
     self:_cancelCapture()
-    self.SearchInput:ReleaseFocus()
+    for _, box in ipairs(self._textBoxes) do
+        if box:IsFocused() then
+            box:ReleaseFocus()
+        end
+    end
     self:_setEntryVisible(self._main, false)
     for _, feature in ipairs(self._features) do
         local entry = feature._entry
@@ -1433,6 +1730,14 @@ function Feature:AddKeybind(opts)
     return self:AddSetting("Keybind", opts)
 end
 
+function Feature:AddDropdown(opts)
+    return self:AddSetting("Dropdown", opts)
+end
+
+function Feature:AddInput(opts)
+    return self:AddSetting("Input", opts)
+end
+
 function Feature:Destroy()
     local win = self.Window
     if self._entry then
@@ -1516,6 +1821,7 @@ function Library:CreateWindow(opts)
     win._notifOrder = 0
     win._notifs = {}
     win._notifByKey = {}
+    win._textBoxes = {}
 
     local theme = win.Theme
     local strings = win.Strings
@@ -1581,6 +1887,7 @@ function Library:CreateWindow(opts)
         Position = UDim2.fromOffset(36, 0), Size = UDim2.new(1, -46, 1, 0), PlaceholderText = strings.Search,
         PlaceholderColor3 = theme.TextDim, TextSize = 12, ClearTextOnFocus = false,
     })
+    table.insert(win._textBoxes, win.SearchInput)
     win.SearchInput.Focused:Connect(function()
         tween(searchStroke, TWEEN_FAST, { Color = theme.Accent })
         searchIcon.Tint(theme.Text, true)
