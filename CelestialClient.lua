@@ -507,7 +507,7 @@ end
 
 
 PearlCatchFunc = Register("PearlCatchFunc",Utils:AddFunction({
-    Name = "PearlCatchFunc Key Bind",
+    Name = "PearlCatch Key Bind",
     Description = "При нажатии на горячую клавишу делает pearl catch по направлению взгяда",
     Callback = function(state) 
         ConfigData["PearlCatchFunc"] = state
@@ -574,6 +574,8 @@ function AutoPearlCatch()
 end
 
 
+
+
 WindchargeBindFunc = Register("WindchargeBindFunc",Utils:AddFunction({
     Name = "Wind charge Key Bind",
     Description = "При нажатии на горячую клавишу использует заряд ветра",
@@ -597,6 +599,56 @@ WindchargeBind = Register("WindchargeBind",WindchargeBindFunc:AddKeybind({
         if WindchargeBindFunc:Get() then  UseWindCharge() end
     end,
 }))
+
+
+PearlBindFunc = Register("PearlBindFunc",Utils:AddFunction({
+    Name = "Ender Pearl Key Bind",
+    Description = "При нажатии на горячую клавишу использует жемчуг края",
+    Callback = function(state) 
+        ConfigData["PearlBindFunc"] = state
+        SaveConfig()
+    end,
+    OnBind = function(key) 
+        ConfigData["PearlBindFunc_Bind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end
+}))
+
+PearlBind = Register("PearlBind",PearlBindFunc:AddKeybind({
+    Name = "Кнопка активации",
+    Callback = function(key) 
+        ConfigData["PearlBind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end,
+    Pressed = function() 
+        if PearlBindFunc:Get() then  UsePearl() end
+    end,
+}))
+
+
+
+function UsePearl()
+    local prevSlot = Hands.inv.selected
+    local EnderPearlSlot = getSlotByName("pearl")
+    if not EnderPearlSlot then 
+        Window:Notify({
+            title = "Pearl Catch Bind",
+            content = "You dont have Ender Pearls in hotbar",
+            duration = 5,
+        })
+        return
+    end
+    local Controllerlook = Controller.look()
+    if EnderPearlSlot ~= prevSlot then  Hands.select(EnderPearlSlot) end
+    Net.send({
+        a = "use",
+        hand = "main",
+        look = Controllerlook,
+        item = "ender_pearl",
+        pressMs = math.floor(os.clock() * 1000 + 0.5)
+    })
+    Hands.select(prevSlot)
+end
 
 
 
