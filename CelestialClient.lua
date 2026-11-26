@@ -36,7 +36,7 @@ local IsLoading = false
 
 local Window = Library:CreateWindow({
     Name = "Celestial",
-    ToggleKey = Enum.KeyCode.Z, -- плавно открывает / закрывает GUI
+    ToggleKey = Enum.KeyCode.Z, 
     Strings = {
         Search = "Поиск функции...",
         Enabled = "Включено",
@@ -48,7 +48,7 @@ local Window = Library:CreateWindow({
     },
 })
 
--- Разделы (Category - подпись группы в списке слева)
+
 local Utils = Window:AddSection({ Name = "Utils", Category = "Main" })
 local Combat = Window:AddSection({ Name = "Combat" })
 local Visual = Window:AddSection({ Name = "Visual" })
@@ -287,7 +287,7 @@ SpeedMultiplierFunc = Register("SpeedMultiplierFunc",Utils:AddFunction({
             end
         end
     end,
-    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+    OnBind = function(key)
         ConfigData["SpeedMultiplierFunc_Bind"] = key and key.Name or "NONE"
         SaveConfig()
     end
@@ -317,7 +317,7 @@ AutoTotemFunc = Register("AutoTotemFunc",Utils:AddFunction({
         SaveConfig()
         AutoTotem = state
     end,
-    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+    OnBind = function(key) 
         ConfigData["AutoTotemFunc_Bind"] = key and key.Name or "NONE"
         SaveConfig()
     end
@@ -360,7 +360,7 @@ ElytraSwapFunc = Register("ElytraSwapFunc",Utils:AddFunction({
         ConfigData["PearlCatchFunc"] = state
         SaveConfig()
     end,
-    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+    OnBind = function(key)
         ConfigData["ElytraSwapFunc_Bind"] = key and key.Name or "NONE"
         SaveConfig()
     end
@@ -369,7 +369,7 @@ ElytraSwapFunc = Register("ElytraSwapFunc",Utils:AddFunction({
 local ElytraSwapBind =  Register("ElytraSwapBind",ElytraSwapFunc:AddKeybind({
     Name = "Кнопка свапа",
     Pressed = function() 
-        ElytraSwap()
+        if ElytraSwapFunc:Get() then ElytraSwap() end
     end,
     Callback = function(key) 
         ConfigData["ElytraSwapBind"] = key and key.Name or "NONE"
@@ -422,7 +422,7 @@ FireworkBindFunc = Register("FireworkBindFunc",Utils:AddFunction({
         ConfigData["PearlCatchFunc"] = state
         SaveConfig()
     end,
-    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+    OnBind = function(key) 
         ConfigData["FireworkBindFunc_Bind"] = key and key.Name or "NONE"
         SaveConfig()
     end
@@ -435,7 +435,7 @@ FireworkBind = Register("FireworkBind",FireworkBindFunc:AddKeybind({
         SaveConfig()
     end,
     Pressed = function() 
-        UseFirework()
+        if FireworkBindFunc:Get() then UseFirework() end
     end,
 }))
 
@@ -489,7 +489,7 @@ PearlCatchFunc = Register("PearlCatchFunc",Utils:AddFunction({
         ConfigData["PearlCatchFunc"] = state
         SaveConfig()
     end,
-    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+    OnBind = function(key)
         ConfigData["PearlCatchFunc_Bind"] = key and key.Name or "NONE"
         SaveConfig()
     end
@@ -502,7 +502,7 @@ PearlCatchBind = Register("PearlCatchBind",PearlCatchFunc:AddKeybind({
         SaveConfig()
     end,
     Pressed = function() 
-        AutoPearlCatch()
+        if PearlCatchFunc:Get() then AutoPearlCatch() end
     end,
 }))
 
@@ -549,6 +549,57 @@ function AutoPearlCatch()
     Hands.select(prevSlot)
 end
 
+
+WindchargeBindFunc = Register("WindchargeBindFunc",Utils:AddFunction({
+    Name = "Wind charge Key Bind",
+    Description = "При нажатии на горячую клавишу использует заряд ветра",
+    Callback = function(state) 
+        ConfigData["WindchargeBindFunc"] = state
+        SaveConfig()
+    end,
+    OnBind = function(key) 
+        ConfigData["WindchargeBindFunc_Bind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end
+}))
+
+WindchargeBind = Register("WindchargeBind",WindchargeBindFunc:AddKeybind({
+    Name = "Кнопка активации",
+    Callback = function(key) 
+        ConfigData["WindchargeBind"] = key and key.Name or "NONE"
+        SaveConfig()
+    end,
+    Pressed = function() 
+        if WindchargeBindFunc:Get() then  UseWindCharge() end
+    end,
+}))
+
+
+
+function UseWindCharge()
+    local prevSlot = Hands.inv.selected
+    local windChargeSlot = getSlotByName("wind_charge")
+    if not windChargeSlot then 
+        Window:Notify({
+            title = "Wind Charge Bind",
+            content = "You dont have Wind Charges in hotbar",
+            duration = 5,
+        })
+        return
+    end
+    local Controllerlook = Controller.look()
+    if windChargeSlot ~= prevSlot then  Hands.select(windChargeSlot) end
+    Net.send({
+        a = "use",
+        hand = "main",
+        look = Controllerlook,
+        item = "wind_charge",
+        pressMs = math.floor(os.clock() * 1000 + 0.5),
+        predictWind = false
+    })
+    Hands.select(prevSlot)
+end
+
 local NightFunc, TimeSlider
 NightFunc = Register("NightFunc",Visual:AddFunction({
     Name = "Time Change",
@@ -558,7 +609,7 @@ NightFunc = Register("NightFunc",Visual:AddFunction({
         SaveConfig()
         Lighting.ClockTime = state and TimeSlider:Get() or 14
     end,
-    OnBind = function(key) -- Срабатывает при смене бинда на карточке
+    OnBind = function(key) 
         ConfigData["NightFunc_Bind"] = key and key.Name or "NONE"
         SaveConfig()
     end
