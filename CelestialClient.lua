@@ -333,20 +333,6 @@ AutoTotemFunc = Register("AutoTotemFunc",Utils:AddFunction({
     end
 }))
 
-Utils:AddFunction({
-    Name = "Test",
-    Description = "тест",
-    Callback = function(state)
-        if state then 
-            local sprint =  Controller.state
-            for i,v in pairs(sprint) do
-                print("key: ".. tostring(i))
-                print("value ".. tostring(v))
-            end
-        end
-    end,
-})    
-
 RunService.Heartbeat:Connect(function()
     if not AutoTotem then return end
     local char = plr.Character
