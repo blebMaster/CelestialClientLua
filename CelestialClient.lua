@@ -18,13 +18,14 @@ local Config = require(ReplicatedStorage.MC.Config)
 local triggerBot = false
 local nextTriggerBotAtack = 0
 local TriggerBotAttackCooldown = 0.5
-local OnlyCritsForTriggerBot = false
+local OnlyCritsForTriggerBot = false    
 local MaceAutoSwapTriggerBot = false
 local weapons = {"netherite_sword","mace","netherite_spear","diamond_spear","netherite_axe","trident_in_hand","diamond_sword","iron_sword"}
 local HitBoxExpansion = 1
 local ReachDist = 0
 local AutoTotem = false
 local lastSwap = 0
+
 
 local HttpService = game:GetService("HttpService")
 local CONFIG_FILE = "CelestialConfig.json"
@@ -44,8 +45,9 @@ local Window = Library:CreateWindow({
         NoResults = "Ничего не найдено",
         NoSettings = "Нет настроек",
         Exit = "Выйти",
-        BindNone = "НЕТ",
+        BindNone = "НЕТ",  
     },
+    Logo = "rbxassetid://132565077273663",
 })
 
 
@@ -110,7 +112,7 @@ local function LoadConfig()
 end
 
 
-local TriggerBotFunc,OnlyCritsTriggerBotToggle,MaceAutoSwapToggle
+local TriggerBotFunc,OnlyCritsTriggerBotToggle,MaceAutoSwapToggle,MinALVSpeedSlider
 TriggerBotFunc = Register("TriggerBotFunc",Combat:AddFunction({
     Name = "Trigger Bot",
     Description = "Автоматически бьет цель при наведении",
@@ -122,7 +124,7 @@ TriggerBotFunc = Register("TriggerBotFunc",Combat:AddFunction({
 }))
 
 OnlyCritsTriggerBotToggle = Register("OnlyCritsTriggerBotToggle",TriggerBotFunc:AddToggle({
-    Name = "Only Crits",
+    Name = "Only Crits",    
     Default = OnlyCritsForTriggerBot,
     Callback = function(value)
         ConfigData["OnlyCritsTriggerBotToggle"] = value
@@ -131,8 +133,10 @@ OnlyCritsTriggerBotToggle = Register("OnlyCritsTriggerBotToggle",TriggerBotFunc:
     end,
 }))
 
+
+
 MaceAutoSwapToggle = Register("MaceAutoSwapToggle",TriggerBotFunc:AddToggle({
-    Name = "Auto swaps to mace when you falling from 2 blocks",
+    Name = "Auto swaps to mace",
     Default = MaceAutoSwapTriggerBot,
     Callback = function(value)
         ConfigData["MaceAutoSwapToggle"] = value
@@ -154,6 +158,7 @@ HitBoxExpansionFunc = Register("HitBoxExpansionFunc",Combat:AddFunction({
         SaveConfig()
     end
 }))
+
 
 HitBoxExpansionSlider = Register("HitBoxExpansionSlider",HitBoxExpansionFunc:AddSlider({
     Name = "Size",
@@ -227,6 +232,7 @@ RunService.RenderStepped:Connect(function()
         if webHit and webHit.dist <= dist then
             return
         end
+        local sprint =  Controller.state.sprinting
         if MaceAutoSwapTriggerBot then
             local Falling = Controller.state and Controller.state.fallDistance >= 2.5
             if Falling then 
@@ -245,8 +251,10 @@ RunService.RenderStepped:Connect(function()
                 if not (Hands.strength() > 0.92) then return end
                 if OnlyCritsForTriggerBot then
                     if hrp and hrp.AssemblyLinearVelocity.Y < -1 then
+                        Controller.state.sprinting = false
                         mouse1click()
                         nextTriggerBotAtack = time + TriggerBotAttackCooldown
+                        task.delay(0.1 ,function() Controller.state.sprinting = sprint end)
                         return
                     end
                 else
@@ -261,8 +269,10 @@ RunService.RenderStepped:Connect(function()
             if not (Hands.strength() > 0.92) then return end
             if OnlyCritsForTriggerBot then
                 if hrp and hrp.AssemblyLinearVelocity.Y < -1 then
+                    Controller.state.sprinting = false
                     mouse1click()
                     nextTriggerBotAtack = time + TriggerBotAttackCooldown
+                    task.delay(0.1 ,function() Controller.state.sprinting = sprint end)
                     return
                 end    
             else
@@ -322,6 +332,20 @@ AutoTotemFunc = Register("AutoTotemFunc",Utils:AddFunction({
         SaveConfig()
     end
 }))
+
+Utils:AddFunction({
+    Name = "Test",
+    Description = "тест",
+    Callback = function(state)
+        if state then 
+            local sprint =  Controller.state
+            for i,v in pairs(sprint) do
+                print("key: ".. tostring(i))
+                print("value ".. tostring(v))
+            end
+        end
+    end,
+})    
 
 RunService.Heartbeat:Connect(function()
     if not AutoTotem then return end
@@ -651,7 +675,6 @@ function getSlotByName(ItemName)
         end
     end   
 end
-
 
 
 
