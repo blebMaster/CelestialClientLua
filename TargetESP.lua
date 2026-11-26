@@ -32,13 +32,18 @@
         Size         studs      orb diameter (default 0.45)
         Speed        number     rotation speed (default 1.6)
         TrailLength  seconds    trail lifetime (default 0.55)
-        Mode         "Spiral" | "Sine" | "Orbit"
+        Mode         "Spiral" | "Sine" | "Orbit" | "Scanner"
+                     Scanner: all orbs fly around on ONE height (an even ring) and the whole ring slides
+                     up and down along the body; the orbs lean 2-3 degrees in the direction of the
+                     vertical movement (looking up while going up, down while going down).
+        ScannerTilt  degrees    lean of the orbs in Scanner mode (default 2.5)
         ColorMode    "Gradient" | "Rainbow" | "White"
         Colors       { Color3, Color3 }   gradient from the first orb to the last
         Glow         boolean    halo around the orb + a small light (default true)
         TeamCheck    boolean    do not show on teammates (default false)
         MaxDistance  studs      max distance of the cursor ray (default 500)
-        Linger       seconds    how long the effect stays after the cursor leaves (default 0.2)
+        Linger       seconds    how long the effect stays after the cursor leaves the target, then it
+                                fades out smoothly (default 1, 0 = start fading immediately)
         Filter       function(player) -> boolean, optional extra filter
 ]]
 
@@ -57,15 +62,18 @@ local DEFAULTS = {
     Speed = 1.6,
     TrailLength = 0.55,
     Mode = "Spiral",
+    ScannerTilt = 2.5,
     ColorMode = "Gradient",
     Colors = { Color3.fromRGB(128, 66, 196), Color3.fromRGB(228, 76, 132) },
     Glow = true,
     TeamCheck = false,
     MaxDistance = 500,
-    Linger = 0.2,
+    Linger = 1,
     Filter = nil,
 }
 
+local SCAN_W = 0.9    -- vertical speed of the "Scanner" ring (radians per unit of time)
+local SCAN_BAND = 2.2 -- height of the Scanner trail band relative to the orb size
 local FADE_IN = 3.3  -- 1 / fade-in seconds
 local FADE_OUT = 4.2 -- 1 / fade-out seconds
 
@@ -168,7 +176,15 @@ function TargetESP:Set(key, value)
             self._active = self:_spawn({
                 Player = g.Player, Character = g.Character, Root = g.Root, Humanoid = g.Humanoid,
             }, 1)
+            self:_updateGroup(self._active, 0) -- position the new parts right away
         end
+    elseif key == "Mode" then
+        -- Scanner trails are real 3D bands (they follow the orb tilt), the others always face the camera
+        self:_eachGroup(function(g)
+            for _, orb in ipairs(g.Orbs) do
+                orb.Trail.FaceCamera = value ~= "Scanner"
+            end
+        end)
     elseif key == "TrailLength" then
         self:_eachGroup(function(g)
             for _, orb in ipairs(g.Orbs) do
@@ -367,7 +383,7 @@ function TargetESP:_spawn(target, alpha)
         trail.Attachment1 = orb.A1
         trail.Lifetime = cfg.TrailLength
         trail.MinLength = 0.02
-        trail.FaceCamera = true
+        trail.FaceCamera = cfg.Mode ~= "Scanner"
         trail.LightEmission = 1
         trail.LightInfluence = 0
         trail.Transparency = NumberSequence.new({
@@ -394,7 +410,11 @@ function TargetESP:_offset(group, orb, t)
     local R, H = group.R, group.H
     local theta = t * orb.Dir + orb.Phase
 
-    if mode == "Sine" then
+    if mode == "Scanner" then
+        -- one common height for every orb, the ring sweeps up and down along the body
+        local a = t + orb.Phase -- all orbs rotate in the same direction, evenly spaced
+        return Vector3.new(R * math.cos(a), H * 0.46 * math.sin(t * SCAN_W), R * math.sin(a))
+    elseif mode == "Sine" then
         -- a wave winding around the body: height follows sin of the angle
         local y = H * 0.32 * math.sin(theta * 3 + orb.Phase)
         return Vector3.new(R * math.cos(theta), y, R * math.sin(theta))
@@ -426,16 +446,28 @@ function TargetESP:_updateGroup(g, dt)
 
     local t = self._time * cfg.Speed
     local count = #g.Orbs
+    local scanner = cfg.Mode == "Scanner"
+    local band = scanner and SCAN_BAND or 1
     for i, orb in ipairs(g.Orbs) do
         local pos = g.Center + self:_offset(g, orb, t)
-        local cf = CFrame.new(pos)
+        local cf
+        if scanner then
+            -- face the way the orb flies (along the ring), leaned a few degrees up / down
+            -- following the vertical movement of the ring (+ while rising, - while sinking)
+            local a = t + orb.Phase
+            local tangent = Vector3.new(-math.sin(a), 0, math.cos(a))
+            local pitch = math.rad(cfg.ScannerTilt) * math.cos(t * SCAN_W)
+            cf = CFrame.lookAt(pos, pos + tangent) * CFrame.Angles(pitch, 0, 0)
+        else
+            cf = CFrame.new(pos)
+        end
 
         local pulse = 1 + 0.12 * math.sin(self._time * 4 + orb.Phase)
         local s = math.max(0.05, cfg.Size * eased * pulse)
         orb.Core.Size = Vector3.new(s, s, s)
         orb.Core.CFrame = cf
-        orb.A0.Position = Vector3.new(0, s * 0.5, 0)
-        orb.A1.Position = Vector3.new(0, -s * 0.5, 0)
+        orb.A0.Position = Vector3.new(0, s * 0.5 * band, 0)
+        orb.A1.Position = Vector3.new(0, -s * 0.5 * band, 0)
         if orb.Halo then
             local hs = s * 2.6
             orb.Halo.Size = Vector3.new(hs, hs, hs)
@@ -513,10 +545,14 @@ local DEFAULT_NAMES = {
     Speed = "Скорость",
     Trail = "Длина шлейфа",
     TrailSuffix = " с",
+    Linger = "Задержка исчезновения",
     Path = "Траектория",
     Spiral = "Спираль",
     Sine = "Синусоида",
     Orbit = "Орбиты",
+    Scanner = "Сканер",
+    Tilt = "Наклон сканера",
+    TiltSuffix = "°",
     Color = "Цвет",
     Gradient = "Градиент",
     Rainbow = "Радуга",
@@ -554,10 +590,15 @@ function TargetESP.Attach(section, opts)
 
     feature:AddDropdown({
         Name = names.Path,
-        Options = { names.Spiral, names.Sine, names.Orbit },
-        Default = ({ Spiral = names.Spiral, Sine = names.Sine, Orbit = names.Orbit })[cfg.Mode],
+        Options = { names.Spiral, names.Sine, names.Orbit, names.Scanner },
+        Default = ({
+            Spiral = names.Spiral, Sine = names.Sine, Orbit = names.Orbit, Scanner = names.Scanner,
+        })[cfg.Mode],
         Callback = function(value)
-            local map = { [names.Spiral] = "Spiral", [names.Sine] = "Sine", [names.Orbit] = "Orbit" }
+            local map = {
+                [names.Spiral] = "Spiral", [names.Sine] = "Sine",
+                [names.Orbit] = "Orbit", [names.Scanner] = "Scanner",
+            }
             fx:Set("Mode", map[value] or "Spiral")
         end,
     })
@@ -586,6 +627,16 @@ function TargetESP.Attach(section, opts)
         Name = names.Trail, Min = 0.1, Max = 1.5, Default = cfg.TrailLength, Increment = 0.05,
         Suffix = names.TrailSuffix,
         Callback = function(v) fx:Set("TrailLength", v) end,
+    })
+    feature:AddSlider({
+        Name = names.Tilt, Min = 0, Max = 15, Default = cfg.ScannerTilt, Increment = 0.5,
+        Suffix = names.TiltSuffix,
+        Callback = function(v) fx:Set("ScannerTilt", v) end,
+    })
+    feature:AddSlider({
+        Name = names.Linger, Min = 0, Max = 3, Default = cfg.Linger, Increment = 0.1,
+        Suffix = names.TrailSuffix,
+        Callback = function(v) fx:Set("Linger", v) end,
     })
     feature:AddToggle({
         Name = names.Glow, Default = cfg.Glow,
