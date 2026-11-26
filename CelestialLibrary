@@ -30,6 +30,19 @@
             OnBind      = function(key) end,              -- keybind changed
         })
 
+        -- Button: like a function (settings + keybind work the same) but it has no on/off state.
+        -- It fires only when it is clicked or when its keybind is pressed.
+        local Button = Section:AddButton({
+            Name        = "Example",
+            Description = "Short description",
+            Keybind     = Enum.KeyCode.T,                 -- optional
+            Callback    = function() end,                 -- click / keybind
+            OnBind      = function(key) end,              -- keybind changed
+            Notify      = false,                          -- true: bottom-left notification on keybind press
+            NotifyText  = "Executed",                     -- optional notification text
+        })
+        Button:Fire()                                     -- press it from code (plays the flash, runs Callback)
+
         Feature:AddToggle ({ Name = "...", Default = true, Callback = function(v) end })
         Feature:AddSlider ({ Name = "...", Min = 0, Max = 10, Default = 5, Increment = 0.5, Suffix = "", Callback = function(v) end })
         Feature:AddKeybind({ Name = "...", Default = Enum.KeyCode.X, Callback = function(key) end, Pressed = function(key) end })
@@ -46,10 +59,12 @@
     Objects:
         Window :AddSection(opts) / :Notify(title, text, duration, positive) / :Show() / :Hide() / :Toggle()
                 :IsVisible() / :SetToggleKey(key) / :SelectSection(section) / :Destroy()
-        Section:AddFunction(opts) (alias AddButton) / :Select()
+        Section:AddFunction(opts) / :AddButton(opts) / :Select()
         Feature:Set(state, silent) / :Get() / :Toggle() / :SetKeybind(key) / :GetKeybind()
                 :OpenSettings() / :CloseSettings() / :ToggleSettings() / :Destroy()
                 :AddToggle / :AddSlider / :AddKeybind / :AddSetting(typeName, opts)
+        Button :Fire() (alias :Press()) / :SetKeybind(key) / :GetKeybind() / :OpenSettings() / :CloseSettings()
+                :ToggleSettings() / :Destroy() / :AddToggle / :AddSlider / :AddKeybind / :AddDropdown / :AddInput
         Setting:Set(value, silent) / :Get()
 
     Own setting types:
@@ -124,6 +139,7 @@ local DEFAULT_STRINGS = {
     Exit = "Exit",
     BindNone = "NONE",
     Listening = "...",
+    Pressed = "Executed",
 }
 
 local KEY_NAMES = {
@@ -1096,7 +1112,7 @@ end
 function Window:_handleHotkey(key)
     for _, feature in ipairs(self._features) do
         if feature.Keybind == key then
-            feature:_setState(not feature.Enabled, true, false)
+            feature:_onHotkey()
         end
         for _, setting in ipairs(feature.Settings) do
             if setting.Kind == "Keybind" and setting.Value == key then
@@ -1444,7 +1460,7 @@ local function buildCard(feature)
     }
 
     card.MouseButton1Click:Connect(function()
-        feature:Toggle()
+        feature:_onClick()
     end)
     card.MouseButton2Click:Connect(function()
         feature:ToggleSettings()
@@ -1763,30 +1779,93 @@ function Feature:Destroy()
     win:_refresh()
 end
 
-function Section:AddFunction(opts)
+-- what a click / keybind press does (functions toggle, buttons fire)
+function Feature:_onClick()
+    self:Toggle()
+end
+
+function Feature:_onHotkey()
+    self:_setState(not self.Enabled, true, false)
+end
+
+-- ----------------------------------------------------------------------------
+-- Button: a Feature without on/off state. Inherits settings window, keybind,
+-- AddToggle / AddSlider / AddKeybind / AddDropdown / AddInput and Destroy.
+-- ----------------------------------------------------------------------------
+local Button = {}
+Button.__index = Button
+setmetatable(Button, { __index = Feature })
+
+function Button:_fire(fromHotkey)
+    local ui = self._ui
+    if ui then
+        -- short flash of the accent gradient
+        ui.Fill.BackgroundTransparency = 0.25
+        tween(ui.Fill, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            BackgroundTransparency = 1,
+        })
+    end
+    fire(self.Callback)
+    if fromHotkey and self.Notify then
+        local win = self.Window
+        win:Notify(self.Name, self.NotifyText or win.Strings.Pressed, 2, true)
+    end
+end
+
+function Button:Fire()
+    self:_fire(false)
+end
+Button.Press = Button.Fire
+
+function Button:_onClick()
+    self:_fire(false)
+end
+
+function Button:_onHotkey()
+    self:_fire(true)
+end
+
+local function noState()
+    warn("[CelestialLib] a button has no on/off state: use :Fire() instead of :Set() / :Get() / :Toggle()")
+end
+Button.Set = noState
+Button.Get = noState
+Button.Toggle = noState
+
+local function createFeature(section, opts, class, defaultName)
     if type(opts) == "string" then
         opts = { Name = opts }
     end
     opts = opts or {}
-    local win = self.Window
+    local win = section.Window
     local feature = setmetatable({
         Window = win,
-        Section = self,
-        Name = opts.Name or "Function",
+        Section = section,
+        Name = opts.Name or defaultName,
         Description = opts.Description or "",
-        Enabled = opts.Default and true or false,
         Keybind = normalizeKey(opts.Keybind),
         Callback = opts.Callback,
         OnBind = opts.OnBind,
         Settings = {},
-    }, Feature)
+    }, class)
+    if class == Button then
+        feature.IsButton = true
+        feature.Notify = opts.Notify and true or false
+        feature.NotifyText = opts.NotifyText
+    else
+        feature.Enabled = opts.Default and true or false
+    end
     feature._searchKey = utf8Lower(feature.Name .. " " .. feature.Description)
 
-    table.insert(self.Features, feature)
+    table.insert(section.Features, feature)
     table.insert(win._features, feature)
     buildCard(feature)
     win:_refresh()
+    return feature
+end
 
+function Section:AddFunction(opts)
+    local feature = createFeature(self, opts, Feature, "Function")
     if feature.Enabled then
         -- run the callback once the script has finished building its settings
         task.defer(function()
@@ -1795,7 +1874,10 @@ function Section:AddFunction(opts)
     end
     return feature
 end
-Section.AddButton = Section.AddFunction
+
+function Section:AddButton(opts)
+    return createFeature(self, opts, Button, "Button")
+end
 
 -- ============================================================================
 -- CreateWindow
