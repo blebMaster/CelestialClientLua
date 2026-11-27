@@ -52,6 +52,15 @@
         Feature:AddInput  ({ Name = "...", Numeric = true, Min = 0, Max = 100, Default = 50,
                              Callback = function(number) end })   -- Numeric: only numbers, Get() returns a number
 
+    Show:      every setting has a boolean property Show (option Show = false hides it from the start):
+                   local Extra = Feature:AddSlider({ Name = "Extra", Show = false,
+                                                     OnShowChange = function(visible) end })
+                   Extra.Show = true      -- the setting appears in the list (false: it disappears)
+                   Extra:SetShow(false, true)  -- same as Extra.Show = false; 2nd argument true = no OnShowChange
+                   print(Extra.Show)      -- current state
+               OnShowChange(value) is called every time Show really changes (not on creation).
+               Hiding only affects the display: the value, Callback and keybind of a hidden setting keep working.
+
     Dropdown:  click the pill -> list opens under it (scrolls after 6 items), click an option to pick it.
                dropdown:SetOptions({ "X", "Y" })  -- replace the list at runtime
     Input:     Callback fires when the field loses focus (Enter / click away); Live = true fires on every keystroke.
@@ -65,7 +74,7 @@
                 :AddToggle / :AddSlider / :AddKeybind / :AddSetting(typeName, opts)
         Button :Fire() (alias :Press()) / :SetKeybind(key) / :GetKeybind() / :OpenSettings() / :CloseSettings()
                 :ToggleSettings() / :Destroy() / :AddToggle / :AddSlider / :AddKeybind / :AddDropdown / :AddInput
-        Setting:Set(value, silent) / :Get()
+        Setting:Set(value, silent) / :Get() / .Show (property) / :SetShow(value, silent) / :GetShow()
 
     Own setting types:
         Library.SettingTypes.MyType = {
@@ -93,7 +102,20 @@ Section.__index = Section
 local Feature = {}
 Feature.__index = Feature
 local Setting = {}
-Setting.__index = Setting
+-- "Show" is a property: `setting.Show = false` hides the setting, `setting.Show = true` brings it back
+Setting.__index = function(t, key)
+    if key == "Show" then
+        return rawget(t, "_show")
+    end
+    return Setting[key]
+end
+Setting.__newindex = function(t, key, value)
+    if key == "Show" then
+        Setting.SetShow(t, value)
+    else
+        rawset(t, key, value)
+    end
+end
 
 local SettingTypes = {}
 Library.SettingTypes = SettingTypes
@@ -489,6 +511,26 @@ end
 
 function Setting:Get()
     return self.Value
+end
+
+-- show / hide the setting in the settings window (only the display is affected: the value, the callbacks
+-- and the keybind of the setting keep working while it is hidden)
+function Setting:SetShow(value, silent)
+    value = value and true or false
+    if value == self._show then
+        return
+    end
+    self._show = value
+    if self._slot then
+        self._slot.Visible = value
+    end
+    if not silent then
+        fire(self.OnShowChange or self.onShowChange, value)
+    end
+end
+
+function Setting:GetShow()
+    return self._show
 end
 
 function Setting:Set(value, silent)
@@ -1587,7 +1629,13 @@ end
 -- ----------------------------------------------------------------------------
 function Feature:_buildSetting(setting)
     local def = SettingTypes[setting.Kind]
-    def.Build(setting, self._list)
+    -- the slot is what gets hidden: the list layout ignores invisible children, so the rows below move up
+    local slot = create("Frame", {
+        Name = "Slot_" .. setting.Name, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+        BackgroundTransparency = 1, BorderSizePixel = 0, LayoutOrder = setting.Order, Visible = setting._show,
+    }, self._list)
+    setting._slot = slot
+    def.Build(setting, slot)
 end
 
 function Feature:_updateNoSettings()
@@ -1723,6 +1771,8 @@ function Feature:AddSetting(kind, opts)
         Kind = kind,
         Name = opts.Name or kind,
         Callback = opts.Callback,
+        OnShowChange = opts.OnShowChange or opts.onShowChange,
+        _show = opts.Show ~= false,
         Order = #self.Settings + 1,
     }, Setting)
     def.Init(setting, opts)
