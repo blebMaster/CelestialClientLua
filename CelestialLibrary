@@ -19,7 +19,17 @@
             Parent    = nil,                      -- optional custom parent of the ScreenGui
         })
 
-        local Section = Window:AddSection({ Name = "Combat", Icon = "rbxassetid://...", Category = "Main" })
+        local Section = Window:AddSection({
+            Name     = "Combat",
+            Category = "Main",                    -- optional group label in the section list
+            Icon     = "rbxassetid://123",        -- optional: shown BEFORE the name (123 and "123" work too)
+            IconTint = true,                      -- optional: false = the icon keeps its own colors
+        })
+        local Other = Window:AddSection({ Name = "No icon" })  -- no Icon: the name simply starts at the edge
+        Section:SetIcon("rbxassetid://456")       -- change the icon later (SetIcon(nil) removes it)
+
+        Window:AddDivider()                       -- a thin line in the section list (between sections)
+        Feature:AddDivider()                      -- a thin line between settings in the settings window
 
         local Feature = Section:AddFunction({
             Name        = "Example",
@@ -61,19 +71,32 @@
                OnShowChange(value) is called every time Show really changes (not on creation).
                Hiding only affects the display: the value, Callback and keybind of a hidden setting keep working.
 
+    Config:    local cfg = Window:GetConfigSettings()   -- plain table: on/off state, keybind and settings of every
+                                                        -- function and button (strings / numbers / booleans only,
+                                                        -- so HttpService:JSONEncode(cfg) works)
+               Window:LoadConfig(cfg)                   -- apply it: settings, keybinds, states (callbacks are called)
+               Window:LoadConfig(cfg, true)             -- the same, but WITHOUT calling any callback (skipCallback)
+               Layout: { Version = 1, Sections = { ["Section"] = { ["Function"] = {
+                             Type = "Function" | "Button", Enabled = true (functions only), Keybind = "R" ("" = none),
+                             Settings = { ["Setting name"] = value } } } } }
+               Callbacks are called only for values that really change. What is missing in the table stays as it is.
+               Equal names inside one scope get "(2)", "(3)" ... in order of creation. Dividers are not saved.
+               Custom setting types: add Serialize(setting) -> value and Deserialize(setting, raw) -> ok, value
+               to Library.SettingTypes.MyType if their value is not a boolean / number / string.
+
     Dropdown:  click the pill -> list opens under it (scrolls after 6 items), click an option to pick it.
                dropdown:SetOptions({ "X", "Y" })  -- replace the list at runtime
     Input:     Callback fires when the field loses focus (Enter / click away); Live = true fires on every keystroke.
 
     Objects:
-        Window :AddSection(opts) / :Notify(title, text, duration, positive) / :Show() / :Hide() / :Toggle()
+        Window :GetConfigSettings() / :LoadConfig(cfg, skipCallback) / :AddSection(opts) / :AddDivider() / :Notify(title, text, duration, positive) / :Show() / :Hide() / :Toggle()
                 :IsVisible() / :SetToggleKey(key) / :SelectSection(section) / :Destroy()
-        Section:AddFunction(opts) / :AddButton(opts) / :Select()
+        Section:AddFunction(opts) / :AddButton(opts) / :SetIcon(icon, tint) / :Select()
         Feature:Set(state, silent) / :Get() / :Toggle() / :SetKeybind(key) / :GetKeybind()
                 :OpenSettings() / :CloseSettings() / :ToggleSettings() / :Destroy()
-                :AddToggle / :AddSlider / :AddKeybind / :AddSetting(typeName, opts)
+                :AddToggle / :AddSlider / :AddKeybind / :AddDropdown / :AddInput / :AddDivider / :AddSetting(typeName, opts)
         Button :Fire() (alias :Press()) / :SetKeybind(key) / :GetKeybind() / :OpenSettings() / :CloseSettings()
-                :ToggleSettings() / :Destroy() / :AddToggle / :AddSlider / :AddKeybind / :AddDropdown / :AddInput
+                :ToggleSettings() / :Destroy() / :AddToggle / :AddSlider / :AddKeybind / :AddDropdown / :AddInput / :AddDivider
         Setting:Set(value, silent) / :Get() / .Show (property) / :SetShow(value, silent) / :GetShow()
 
     Own setting types:
@@ -141,6 +164,7 @@ local DEFAULT_THEME = {
     Card = Color3.fromRGB(14, 14, 17),
     CardHover = Color3.fromRGB(20, 20, 25),
     Border = Color3.fromRGB(28, 28, 34),
+    Divider = Color3.fromRGB(38, 38, 46),
     BorderHover = Color3.fromRGB(56, 48, 70),
     Accent = Color3.fromRGB(128, 66, 196),
     Accent2 = Color3.fromRGB(228, 76, 132),
@@ -292,6 +316,20 @@ local function truncateText(text, maxLen)
         return string.sub(text, 1, utf8.offset(text, maxLen + 1) - 1)
     end
     return text
+end
+
+-- "rbxassetid://123", 123 and "123" are all accepted for images
+local function assetUrl(value)
+    if value == nil or value == "" then
+        return nil
+    end
+    if type(value) == "number" then
+        return "rbxassetid://" .. string.format("%d", value)
+    end
+    if type(value) == "string" and string.match(value, "^%d+$") then
+        return "rbxassetid://" .. value
+    end
+    return value
 end
 
 local function normalizeKey(value)
@@ -725,6 +763,20 @@ SettingTypes.Keybind = {
     Normalize = function(_, value)
         return normalizeKey(value)
     end,
+    -- config: the key is stored as its name ("R"), "" = no key
+    Serialize = function(setting)
+        return setting.Value and setting.Value.Name or ""
+    end,
+    Deserialize = function(_, raw)
+        if raw == "" or raw == false then
+            return true, nil
+        end
+        local key = normalizeKey(raw)
+        if key == nil then
+            return false -- unknown key name: leave the current key alone
+        end
+        return true, key
+    end,
     Build = function(setting, parent)
         local win = setting.Feature.Window
         local theme = win.Theme
@@ -1022,6 +1074,30 @@ SettingTypes.Input = {
     end,
 }
 
+-- ----------------------------------------------------------------------------
+-- Divider (just a line between settings)
+-- ----------------------------------------------------------------------------
+SettingTypes.Divider = {
+    NoConfig = true, -- a line has no value: it is not saved in configs
+    Init = function(setting)
+        setting.Value = nil
+    end,
+    Normalize = function()
+        return nil -- a line has no value: Set() does nothing
+    end,
+    Build = function(setting, parent)
+        local win = setting.Feature.Window
+        local row = create("Frame", {
+            Name = setting.Name, Size = UDim2.new(1, 0, 0, 5), BackgroundTransparency = 1, BorderSizePixel = 0,
+        }, parent)
+        create("Frame", {
+            Name = "Line", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0),
+            Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = win.Theme.Divider, BorderSizePixel = 0,
+        }, row)
+        setting._render = function() end
+    end,
+}
+
 -- ============================================================================
 -- Window
 -- ============================================================================
@@ -1211,6 +1287,7 @@ function Window:AddSection(opts)
         Window = self,
         Name = opts.Name or "Section",
         Icon = opts.Icon,
+        IconTint = opts.IconTint,
         Category = opts.Category,
         Features = {},
         Index = #self.Sections + 1,
@@ -1240,39 +1317,66 @@ function Window:AddSection(opts)
     corner(fill, 9)
     gradient(fill, theme, 0)
 
-    local textX = 14
-    local icon
-    if section.Icon then
-        icon = create("ImageLabel", {
-            AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), Size = UDim2.fromOffset(18, 18),
-            BackgroundTransparency = 1, Image = section.Icon, ImageColor3 = theme.TextMuted, ZIndex = 2,
-        }, btn)
-        textX = 40
-    end
     local label = newText(self, "TextLabel", btn, {
-        Position = UDim2.fromOffset(textX, 0), Size = UDim2.new(1, -(textX + 8), 1, 0), Text = section.Name,
+        Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -22, 1, 0), Text = section.Name,
         TextSize = 13, Weight = Enum.FontWeight.SemiBold, TextColor3 = theme.TextMuted, ZIndex = 2,
         TextTruncate = Enum.TextTruncate.AtEnd,
     })
 
-    section._setActive = function(active)
-        tween(fill, TWEEN_FAST, { BackgroundTransparency = active and 0 or 1 })
-        tween(btn, TWEEN_FAST, { BackgroundTransparency = 1 })
-        tween(label, TWEEN_FAST, { TextColor3 = active and WHITE or theme.TextMuted })
+    -- optional icon in front of the name (section.Icon = nil -> no icon, the name starts at the left edge)
+    local icon
+    local state = "idle" -- "idle" | "hover" | "active"
+    local function paint(animate)
+        local color = state == "active" and WHITE or (state == "hover" and theme.Text or theme.TextMuted)
+        local info = animate and TWEEN_FAST or TWEEN_NOW
+        tween(label, info, { TextColor3 = color })
         if icon then
-            tween(icon, TWEEN_FAST, { ImageColor3 = active and WHITE or theme.TextMuted })
+            -- IconTint = false: the icon keeps its own colors (not painted white / gray)
+            tween(icon, info, { ImageColor3 = section.IconTint == false and WHITE or color })
         end
     end
+    local function layoutIcon()
+        local url = assetUrl(section.Icon)
+        local textX = 14
+        if url then
+            if not icon then
+                icon = create("ImageLabel", {
+                    Name = "Icon", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0),
+                    Size = UDim2.fromOffset(18, 18), BackgroundTransparency = 1, ScaleType = Enum.ScaleType.Fit,
+                    ZIndex = 2,
+                }, btn)
+            end
+            icon.Image = url
+            textX = 40
+        elseif icon then
+            icon:Destroy()
+            icon = nil
+        end
+        label.Position = UDim2.fromOffset(textX, 0)
+        label.Size = UDim2.new(1, -(textX + 8), 1, 0)
+        paint(false)
+    end
+    section._layoutIcon = layoutIcon
+    layoutIcon()
+
+    section._setActive = function(active)
+        state = active and "active" or "idle"
+        tween(fill, TWEEN_FAST, { BackgroundTransparency = active and 0 or 1 })
+        tween(btn, TWEEN_FAST, { BackgroundTransparency = 1 })
+        paint(true)
+    end
     btn.MouseEnter:Connect(function()
-        if self._active ~= section then
+        if state == "idle" then
+            state = "hover"
             tween(btn, TWEEN_FAST, { BackgroundTransparency = 0.93 })
-            tween(label, TWEEN_FAST, { TextColor3 = theme.Text })
+            paint(true)
         end
     end)
     btn.MouseLeave:Connect(function()
-        if self._active ~= section then
+        if state == "hover" then
+            state = "idle"
             tween(btn, TWEEN_FAST, { BackgroundTransparency = 1 })
-            tween(label, TWEEN_FAST, { TextColor3 = theme.TextMuted })
+            paint(true)
         end
     end)
     btn.MouseButton1Click:Connect(function()
@@ -1283,6 +1387,24 @@ function Window:AddSection(opts)
         self:SelectSection(section)
     end
     return section
+end
+
+-- a thin horizontal line in the section list (sidebar), in order of creation
+function Window:AddDivider()
+    self._sideOrder = self._sideOrder + 1
+    local holder = create("Frame", {
+        Name = "Divider", Size = UDim2.new(1, 0, 0, 13), BackgroundTransparency = 1, BorderSizePixel = 0,
+        LayoutOrder = self._sideOrder,
+    }, self.SideList)
+    create("Frame", {
+        Name = "Line", AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 2, 0.5, 0),
+        Size = UDim2.new(1, -4, 0, 1), BackgroundColor3 = self.Theme.Divider, BorderSizePixel = 0,
+    }, holder)
+    local divider = { Instance = holder }
+    function divider.Destroy()
+        holder:Destroy()
+    end
+    return divider
 end
 
 -- ----------------------------------------------------------------------------
@@ -1428,6 +1550,153 @@ function Window:SetToggleKey(key)
     self.ToggleKey = normalizeKey(key) or self.ToggleKey
 end
 
+-- ----------------------------------------------------------------------------
+-- Config: Window:GetConfigSettings() / Window:LoadConfig(cfg, skipCallback)
+-- ----------------------------------------------------------------------------
+local CONFIG_VERSION = 1
+
+-- unique key inside one scope: the second "Speed" becomes "Speed (2)", the third "Speed (3)", ...
+-- (the order of creation is always the same, so Get and Load agree on the keys)
+local function uniqueKey(used, name)
+    local key = name
+    local n = 1
+    while used[key] do
+        n = n + 1
+        key = name .. " (" .. n .. ")"
+    end
+    used[key] = true
+    return key
+end
+
+-- sections -> functions / buttons -> settings, each with the key it has in a config
+local function configItems(win)
+    local sections = {}
+    local usedSections = {}
+    for _, section in ipairs(win.Sections) do
+        local sectionItem = { Key = uniqueKey(usedSections, section.Name), Section = section, Features = {} }
+        local usedFeatures = {}
+        for _, feature in ipairs(section.Features) do
+            local featureItem = { Key = uniqueKey(usedFeatures, feature.Name), Feature = feature, Settings = {} }
+            local usedSettings = {}
+            for _, setting in ipairs(feature.Settings) do
+                local def = SettingTypes[setting.Kind]
+                if not (def and def.NoConfig) then
+                    featureItem.Settings[#featureItem.Settings + 1] = {
+                        Key = uniqueKey(usedSettings, setting.Name), Setting = setting,
+                    }
+                end
+            end
+            sectionItem.Features[#sectionItem.Features + 1] = featureItem
+        end
+        sections[#sections + 1] = sectionItem
+    end
+    return sections
+end
+
+local function serializeSetting(setting)
+    local def = SettingTypes[setting.Kind]
+    if def and def.Serialize then
+        return def.Serialize(setting)
+    end
+    local value = setting.Value
+    local t = type(value)
+    if t == "boolean" or t == "number" or t == "string" then
+        return value
+    end
+    return nil -- Color3, Enum, tables...: a custom type needs its own Serialize / Deserialize
+end
+
+-- Returns a plain table (only strings, numbers, booleans and tables: HttpService:JSONEncode accepts it):
+--   { Version = 1, Sections = { [section name] = { [function / button name] = {
+--       Type = "Function" | "Button",
+--       Enabled = true,            -- functions only
+--       Keybind = "R",             -- name of the key, "" = no key
+--       Settings = { [setting name] = value, ... },    -- Toggle / Slider / Keybind / Dropdown / Input ...
+--   } } } }
+function Window:GetConfigSettings()
+    local sections = {}
+    for _, sectionItem in ipairs(configItems(self)) do
+        local features = {}
+        for _, featureItem in ipairs(sectionItem.Features) do
+            local feature = featureItem.Feature
+            local entry = {
+                Type = feature.IsButton and "Button" or "Function",
+                Keybind = feature.Keybind and feature.Keybind.Name or "",
+                Settings = {},
+            }
+            if not feature.IsButton then
+                entry.Enabled = feature.Enabled and true or false
+            end
+            for _, settingItem in ipairs(featureItem.Settings) do
+                local value = serializeSetting(settingItem.Setting)
+                if value ~= nil then
+                    entry.Settings[settingItem.Key] = value
+                end
+            end
+            features[featureItem.Key] = entry
+        end
+        sections[sectionItem.Key] = features
+    end
+    return { Version = CONFIG_VERSION, Sections = sections }
+end
+
+-- Applies a table made by GetConfigSettings: settings, keybinds and the on/off state of every function.
+-- skipCallback (default false): true = nothing is called, only the values are changed.
+-- Whatever is missing in the table stays as it is, unknown names / invalid values are ignored.
+-- Returns true, or false and a message when cfg is not a config table.
+function Window:LoadConfig(cfg, skipCallback)
+    local silent = skipCallback and true or false
+    if type(cfg) ~= "table" or type(cfg.Sections) ~= "table" then
+        return false, "[CelestialLib] LoadConfig expects a table made by GetConfigSettings()"
+    end
+    if type(cfg.Version) == "number" and cfg.Version > CONFIG_VERSION then
+        warn("[CelestialLib] the config was made by a newer version of the library, loading what is understood")
+    end
+
+    for _, sectionItem in ipairs(configItems(self)) do
+        local savedSection = cfg.Sections[sectionItem.Key]
+        if type(savedSection) == "table" then
+            for _, featureItem in ipairs(sectionItem.Features) do
+                local saved = savedSection[featureItem.Key]
+                local feature = featureItem.Feature
+                if type(saved) == "table" then
+                    -- 1) settings first, so the function can already read them when it is switched on
+                    if type(saved.Settings) == "table" then
+                        for _, settingItem in ipairs(featureItem.Settings) do
+                            local raw = saved.Settings[settingItem.Key]
+                            if raw ~= nil then
+                                local setting = settingItem.Setting
+                                local def = SettingTypes[setting.Kind]
+                                local ok, value = true, raw
+                                if def and def.Deserialize then
+                                    ok, value = def.Deserialize(setting, raw)
+                                end
+                                if ok then
+                                    setting:Set(value, silent)
+                                end
+                            end
+                        end
+                    end
+                    -- 2) keybind
+                    if saved.Keybind ~= nil then
+                        local name = saved.Keybind
+                        if name == "" or name == false then
+                            feature:SetKeybind(nil, silent)
+                        elseif normalizeKey(name) ~= nil then
+                            feature:SetKeybind(name, silent)
+                        end
+                    end
+                    -- 3) on / off state (buttons have none)
+                    if not feature.IsButton and type(saved.Enabled) == "boolean" then
+                        feature:Set(saved.Enabled, silent)
+                    end
+                end
+            end
+        end
+    end
+    return true
+end
+
 function Window:CloseAllSettings()
     for _, feature in ipairs(self._features) do
         feature:CloseSettings()
@@ -1452,6 +1721,17 @@ end
 
 function Section:Select()
     self.Window:SelectSection(self)
+end
+
+-- change / remove the icon of the section at runtime: section:SetIcon("rbxassetid://123") / section:SetIcon(nil)
+function Section:SetIcon(icon, tint)
+    self.Icon = icon
+    if tint ~= nil then
+        self.IconTint = tint
+    end
+    if self._layoutIcon then
+        self._layoutIcon()
+    end
 end
 
 local function buildCard(feature)
@@ -1804,6 +2084,11 @@ function Feature:AddInput(opts)
     return self:AddSetting("Input", opts)
 end
 
+-- a line between settings (it is a setting too: it can be hidden with .Show)
+function Feature:AddDivider(opts)
+    return self:AddSetting("Divider", opts)
+end
+
 function Feature:Destroy()
     local win = self.Window
     if self._entry then
@@ -1939,8 +2224,11 @@ function Library:CreateWindow(opts)
     win.Name = opts.Name or "Celestial"
     win.Theme = merge(DEFAULT_THEME, opts.Theme)
     win.Strings = merge(DEFAULT_STRINGS, opts.Strings)
-    win.IconAssets = opts.Icons or {}
-    win.LogoImage = opts.Logo
+    win.IconAssets = {}
+    for name, asset in pairs(opts.Icons or {}) do
+        win.IconAssets[name] = assetUrl(asset)
+    end
+    win.LogoImage = assetUrl(opts.Logo)
     win.ToggleKey = normalizeKey(opts.ToggleKey) or Enum.KeyCode.Insert
     win.SettingsWidth = opts.SettingsWidth or 252
     win.Sections = {}
